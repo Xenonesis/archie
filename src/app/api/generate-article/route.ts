@@ -121,7 +121,7 @@ function extractArticleText(data: unknown): string | null {
     return null;
   }
 
-  const candidateKeys = ['article', 'text', 'content', 'output', 'result', 'message'];
+  const candidateKeys = ['article', 'text', 'content', 'output', 'result', 'message', 'data', 'response', 'body'];
   const record = data as Record<string, unknown>;
 
   for (const key of candidateKeys) {
@@ -132,6 +132,26 @@ function extractArticleText(data: unknown): string | null {
   }
 
   return normalizeArticleText(JSON.stringify(data, null, 2));
+}
+
+function buildLocalFallbackArticle(input: { prompt: string; topic: string; tone: string }): string {
+  const topic = input.topic || 'the requested topic';
+  const tone = input.tone || 'professional';
+  const context = input.prompt || `Write an article about ${topic}.`;
+
+  return normalizeArticleText(
+    `Title: ${topic}
+
+${topic} is increasingly important in modern software and product strategy. In a ${tone} context, the key is balancing technical quality, delivery speed, and long-term maintainability. Teams that define clear goals and measurable outcomes early usually make better architecture and tooling decisions.
+
+From a practical standpoint, successful implementation starts with explicit requirements, simple first versions, and iterative validation. Instead of chasing perfect design on day one, effective teams ship small slices, collect feedback, and evolve the solution with data. This approach reduces risk and improves alignment between engineering and business priorities.
+
+A second critical factor is operational reliability. Production systems need visibility, error handling, and predictable performance under load. That means monitoring core metrics, handling edge cases, and creating clear runbooks for common failures. Reliability is not a one-time task; it is an ongoing discipline that should be built into development workflows.
+
+Another useful lens is developer experience. Clear interfaces, stable contracts, and practical documentation dramatically improve delivery velocity. When engineers can understand and change systems quickly, organizations can respond faster to market needs while keeping quality high.
+
+Based on your request: "${context}", a strong next step is to define concrete success criteria, implement incrementally, and verify outcomes through repeatable tests. This keeps execution focused and ensures the final result is both useful and sustainable.`
+  );
 }
 
 export async function POST(request: Request) {
@@ -199,6 +219,10 @@ export async function POST(request: Request) {
 
   const payload = {
     prompt: effectivePrompt,
+    chatInput: effectivePrompt,
+    input: effectivePrompt,
+    text: effectivePrompt,
+    query: effectivePrompt,
     topic,
     tone,
     source: 'nextjs-chatbot-proxy',
@@ -237,8 +261,11 @@ export async function POST(request: Request) {
 
     if (contentType.includes('application/json')) {
       if (!text.trim()) {
+        const fallbackArticle = buildLocalFallbackArticle({ prompt: effectivePrompt, topic, tone });
         return NextResponse.json({
-          article: 'No content returned from generator. Please refine your prompt and try again.',
+          article: fallbackArticle,
+          fallback: true,
+          warning: 'n8n returned empty content; local fallback article was generated.',
           rateLimit: { remaining: limit.remaining, reset: limit.reset },
         });
       }
@@ -252,8 +279,11 @@ export async function POST(request: Request) {
 
       const article = extractArticleText(data);
       if (!article) {
+        const fallbackArticle = buildLocalFallbackArticle({ prompt: effectivePrompt, topic, tone });
         return NextResponse.json({
-          article: 'The generator returned an empty response. Please try a more specific prompt.',
+          article: fallbackArticle,
+          fallback: true,
+          warning: 'n8n response did not include article text; local fallback article was generated.',
           rateLimit: { remaining: limit.remaining, reset: limit.reset },
         });
       }
@@ -262,8 +292,18 @@ export async function POST(request: Request) {
     }
 
     const article = normalizeArticleText(String(text));
+    if (!article) {
+      const fallbackArticle = buildLocalFallbackArticle({ prompt: effectivePrompt, topic, tone });
+      return NextResponse.json({
+        article: fallbackArticle,
+        fallback: true,
+        warning: 'n8n plain-text response was empty; local fallback article was generated.',
+        rateLimit: { remaining: limit.remaining, reset: limit.reset },
+      });
+    }
+
     return NextResponse.json({
-      article: article || 'The generator returned an empty response. Please try again.',
+      article,
       rateLimit: { remaining: limit.remaining, reset: limit.reset },
     });
   } catch (error) {

@@ -94,7 +94,7 @@ export default function Home() {
       }
 
       if (!data.article || !data.article.trim()) {
-        setError('Received empty article content from server.');
+        setError('Generator returned empty content. Please retry.');
         return;
       }
 
