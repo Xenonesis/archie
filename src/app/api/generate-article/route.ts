@@ -152,10 +152,9 @@ function extractArticleText(data: unknown): string | null {
 function buildLocalFallbackArticle(input: { prompt: string; topic: string; tone: string }): string {
   const topic = input.topic || 'the requested topic';
   const tone = input.tone || 'professional';
-  const context = input.prompt || `Write an article about ${topic}.`;
 
   return normalizeArticleText(
-    `Title: ${topic}
+    `# ${topic}
 
 ${topic} is increasingly important in modern software and product strategy. In a ${tone} context, the key is balancing technical quality, delivery speed, and long-term maintainability. Teams that define clear goals and measurable outcomes early usually make better architecture and tooling decisions.
 
@@ -163,10 +162,13 @@ From a practical standpoint, successful implementation starts with explicit requ
 
 A second critical factor is operational reliability. Production systems need visibility, error handling, and predictable performance under load. That means monitoring core metrics, handling edge cases, and creating clear runbooks for common failures. Reliability is not a one-time task; it is an ongoing discipline that should be built into development workflows.
 
-Another useful lens is developer experience. Clear interfaces, stable contracts, and practical documentation dramatically improve delivery velocity. When engineers can understand and change systems quickly, organizations can respond faster to market needs while keeping quality high.
-
-Based on your request: "${context}", a strong next step is to define concrete success criteria, implement incrementally, and verify outcomes through repeatable tests. This keeps execution focused and ensures the final result is both useful and sustainable.`
+Another useful lens is developer experience. Clear interfaces, stable contracts, and practical documentation dramatically improve delivery velocity. When engineers can understand and change systems quickly, organizations can respond faster to market needs while keeping quality high.`
   );
+}
+
+function buildLocalFallbackCommentary(input: { prompt: string }): string {
+  const context = input.prompt || `Write an article.`;
+  return `Based on your request: "${context}", a strong next step is to define concrete success criteria, implement incrementally, and verify outcomes through repeatable tests. This keeps execution focused and ensures the final result is both useful and sustainable.`;
 }
 
 export async function POST(request: Request) {
@@ -278,8 +280,10 @@ export async function POST(request: Request) {
     if (contentType.includes('application/json')) {
       if (!text.trim()) {
         const fallbackArticle = buildLocalFallbackArticle({ prompt: effectivePrompt, topic, tone });
+        const fallbackCommentary = buildLocalFallbackCommentary({ prompt: effectivePrompt });
         return NextResponse.json({
           article: fallbackArticle,
+          commentary: fallbackCommentary,
           fallback: true,
           warning: 'n8n returned empty content; local fallback article was generated.',
           rateLimit: { remaining: limit.remaining, reset: limit.reset },
@@ -294,24 +298,34 @@ export async function POST(request: Request) {
       }
 
       const article = extractArticleText(data);
+      let commentary = undefined;
+      // Also extract commentary if the data has it.
+      if (data && typeof data === 'object' && 'commentary' in data) {
+         commentary = String((data as any).commentary);
+      }
+
       if (!article) {
         const fallbackArticle = buildLocalFallbackArticle({ prompt: effectivePrompt, topic, tone });
+        const fallbackCommentary = buildLocalFallbackCommentary({ prompt: effectivePrompt });
         return NextResponse.json({
           article: fallbackArticle,
+          commentary: fallbackCommentary,
           fallback: true,
           warning: 'n8n response did not include article text; local fallback article was generated.',
           rateLimit: { remaining: limit.remaining, reset: limit.reset },
         });
       }
 
-      return NextResponse.json({ article, rateLimit: { remaining: limit.remaining, reset: limit.reset } });
+      return NextResponse.json({ article, commentary, rateLimit: { remaining: limit.remaining, reset: limit.reset } });
     }
 
     const article = normalizeArticleText(String(text));
     if (!article) {
       const fallbackArticle = buildLocalFallbackArticle({ prompt: effectivePrompt, topic, tone });
+      const fallbackCommentary = buildLocalFallbackCommentary({ prompt: effectivePrompt });
       return NextResponse.json({
         article: fallbackArticle,
+        commentary: fallbackCommentary,
         fallback: true,
         warning: 'n8n plain-text response was empty; local fallback article was generated.',
         rateLimit: { remaining: limit.remaining, reset: limit.reset },

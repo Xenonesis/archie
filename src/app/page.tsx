@@ -3,10 +3,11 @@
 import { FormEvent, useMemo, useRef, useEffect, useState } from "react";
 import Link from "next/link";
 
-type ChatMessage = { role: "user" | "assistant" | "system"; text: string };
+type ChatMessage = { role: "user" | "assistant" | "system"; text: string; commentary?: string };
 
 type ResponseFromApi = {
   article?: string;
+  commentary?: string;
   rateLimit?: { remaining: number; reset: number };
   error?: string;
   code?: string;
@@ -140,7 +141,7 @@ export default function Home() {
         return;
       }
 
-      setMessages((prev) => [...prev, { role: "assistant", text: data.article as string }]);
+      setMessages((prev) => [...prev, { role: "assistant", text: data.article as string, commentary: data.commentary }]);
 
       if (data.rateLimit?.remaining !== undefined && data.rateLimit.remaining <= 1) {
         setMessages((prev) => [...prev, { role: "system", text: "Approaching rate limit. Slow down to avoid throttling." }]);
@@ -353,32 +354,86 @@ export default function Home() {
               const isSystem = msg.role === "system";
 
               return (
-                <div key={idx} className={`flex gap-4 ${isUser ? "justify-end" : "justify-start"} animate-in fade-in-up duration-300`}>
+                <div key={idx} className={`flex gap-4 ${isUser ? "justify-end" : "justify-start"} animate-in fade-in-up duration-300 w-full`}>
                   {!isUser && !isSystem && (
-                    <div className="flex items-center justify-center w-8 h-8 rounded shrink-0 bg-[var(--brand-subtle)] border border-[var(--brand-border)] text-[var(--brand)] shadow-sm">
+                    <div className="flex items-center justify-center w-8 h-8 rounded mt-1 shrink-0 bg-[var(--brand-subtle)] border border-[var(--brand-border)] text-[var(--brand)] shadow-sm">
                       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z" /></svg>
                     </div>
                   )}
                   {isSystem && (
-                    <div className="flex items-center justify-center w-8 h-8 rounded shrink-0 bg-[var(--error-bg)] text-[var(--error-text)] shadow-sm">
+                    <div className="flex items-center justify-center w-8 h-8 rounded mt-1 shrink-0 bg-[var(--error-bg)] text-[var(--error-text)] shadow-sm">
                       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10" /><path d="m15 9-6 6" /><path d="m9 9 6 6" /></svg>
                     </div>
                   )}
 
-                  <div className={`flex flex-col max-w-[85%] ${isUser ? "bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-[var(--text-primary)] px-4 py-3 rounded-2xl shadow-sm" : "text-[var(--text-primary)]"}`}>
-                    <div
-                      className="prose prose-sm md:prose-base leading-relaxed break-words whitespace-pre-wrap max-w-none text-[var(--text-primary)]"
-                      style={{ color: isSystem ? "var(--error-text)" : "inherit" }}
-                    >
-                      {msg.text}
-                    </div>
+                  <div className={`flex flex-col flex-1 max-w-[85%] ${isUser ? "bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-[var(--text-primary)] px-4 py-3 rounded-2xl shadow-sm" : "w-full"}`}>
+                    
+                    {isSystem ? (
+                      <div className="prose prose-sm md:prose-base leading-relaxed break-words whitespace-pre-wrap max-w-none text-[var(--error-text)]">
+                        {msg.text}
+                      </div>
+                    ) : isUser ? (
+                       <div className="prose prose-sm md:prose-base leading-relaxed break-words whitespace-pre-wrap max-w-none text-[var(--text-primary)]">
+                        {msg.text}
+                      </div>
+                    ) : (
+                      <div className="w-full flex flex-col gap-4">
+                        {msg.commentary && (
+                          <div className="text-[14.5px] leading-relaxed text-[var(--text-primary)] animate-in fade-in slide-in-from-bottom-1 px-1">
+                            {msg.commentary}
+                          </div>
+                        )}
+                        <div className="rounded-xl overflow-hidden bg-[var(--bg-surface)] border border-[var(--border-subtle)] shadow-xl w-full flex flex-col font-sans transition-all duration-200">
+                          <div className="flex items-center justify-between px-4 py-2.5 border-b border-[var(--border-subtle)] bg-[var(--bg-elevated)] shrink-0 select-none">
+                          <div className="flex items-center gap-4">
+                            <div className="flex items-center gap-1.5">
+                              <div className="w-3 h-3 rounded-full bg-[#ff5f56] border border-[#e0443e] shadow-sm"></div>
+                              <div className="w-3 h-3 rounded-full bg-[#ffbd2e] border border-[#dea123] shadow-sm"></div>
+                              <div className="w-3 h-3 rounded-full bg-[#27c93f] border border-[#1aab29] shadow-sm"></div>
+                            </div>
+                            <div className="flex items-center gap-2 opacity-90">
+                              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--brand)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="16 18 22 12 16 6" /><polyline points="8 6 2 12 8 18" /></svg>
+                              <span className="text-[12px] font-bold text-[var(--text-secondary)] tracking-wider uppercase font-mono">Article_Document.md</span>
+                            </div>
+                          </div>
+                          
+                          <div className="flex items-center gap-1">
+                            <button
+                              title="Copy Article"
+                              onClick={() => handleCopy(msg.text, idx)}
+                              className="text-[var(--text-tertiary)] hover:text-[var(--brand)] transition-colors flex items-center justify-center p-1.5 rounded-lg hover:bg-[var(--bg-hover)]"
+                            >
+                              {copiedIdx === idx ? (
+                                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12" /></svg>
+                              ) : (
+                                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2" /><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2" /></svg>
+                              )}
+                            </button>
+                            <div className="w-[1px] h-4 bg-[var(--border-default)] mx-1" />
+                            <button className="text-[var(--text-tertiary)] hover:text-[var(--text-primary)] transition-colors flex items-center justify-center p-1.5 rounded-lg hover:bg-[var(--bg-hover)]" title="Edit Formatting">
+                              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
+                            </button>
+                            <button className="text-[var(--text-tertiary)] hover:text-[var(--text-primary)] transition-colors flex items-center justify-center p-1.5 rounded-lg hover:bg-[var(--bg-hover)]" title="Preview Article">
+                              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                            </button>
+                          </div>
+                        </div>
+
+                        <div className="p-5 overflow-auto text-[14.5px] leading-relaxed bg-[var(--bg-surface)]">
+                           <div className="prose prose-sm md:prose-base max-w-none text-[var(--text-primary)] break-words whitespace-pre-wrap font-mono">
+                             {msg.text}
+                           </div>
+                        </div>
+                      </div>
+                      </div>
+                    )}
 
                     {!isUser && !isSystem && (
-                      <div className="flex mt-3 gap-1 items-center">
+                      <div className="flex mt-2 gap-1.5 items-center text-[var(--text-tertiary)]">
                         <button
                           id={`copy-btn-${idx}`}
                           title={copiedIdx === idx ? "Copied!" : "Copy"}
-                          className={`flex items-center justify-center p-1.5 rounded-md transition-colors ${copiedIdx === idx ? "text-[var(--brand)]" : "text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)]"}`}
+                          className={`flex items-center justify-center p-1.5 rounded-md transition-colors ${copiedIdx === idx ? "text-[var(--brand)]" : "hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)]"}`}
                           onClick={() => handleCopy(msg.text, idx)}
                         >
                           {copiedIdx === idx ? (
@@ -392,7 +447,7 @@ export default function Home() {
                           id={`thumbs-up-btn-${idx}`}
                           title="Good response"
                           onClick={() => handleFeedback(idx, "up")}
-                          className={`flex items-center justify-center p-1.5 rounded-md transition-colors ${feedbackIdx[idx] === "up" ? "text-[var(--brand)] bg-[var(--brand-subtle)]" : "text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)]"}`}
+                          className={`flex items-center justify-center p-1.5 rounded-md transition-colors ${feedbackIdx[idx] === "up" ? "text-[var(--brand)] bg-[var(--brand-subtle)]" : "hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)]"}`}
                         >
                           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 9V5a3 3 0 0 0-3-3l-4 9v11h11.28a2 2 0 0 0 2-1.7l1.38-9a2 2 0 0 0-2-2.3zM7 22H4a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h3" /></svg>
                         </button>
@@ -401,7 +456,7 @@ export default function Home() {
                           id={`thumbs-down-btn-${idx}`}
                           title="Bad response"
                           onClick={() => handleFeedback(idx, "down")}
-                          className={`flex items-center justify-center p-1.5 rounded-md transition-colors ${feedbackIdx[idx] === "down" ? "text-[var(--error-text)] bg-[var(--error-bg)]" : "text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)]"}`}
+                          className={`flex items-center justify-center p-1.5 rounded-md transition-colors ${feedbackIdx[idx] === "down" ? "text-[var(--error-text)] bg-[var(--error-bg)]" : "hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)]"}`}
                         >
                           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M10 15v4a3 3 0 0 0 3 3l4-9V2H5.72a2 2 0 0 0-2 1.7l-1.38 9a2 2 0 0 0 2 2.3zm7-13h2.67A2.31 2.31 0 0 1 22 4v7a2.31 2.31 0 0 1-2.33 2H17" /></svg>
                         </button>
@@ -416,7 +471,7 @@ export default function Home() {
                               navigator.clipboard?.writeText(msg.text).catch(() => {});
                             }
                           }}
-                          className="flex items-center justify-center p-1.5 rounded-md text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] transition-colors"
+                          className="flex items-center justify-center p-1.5 rounded-md hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] transition-colors"
                         >
                           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8" /><polyline points="16 6 12 2 8 6" /><line x1="12" y1="2" x2="12" y2="15" /></svg>
                         </button>
@@ -426,7 +481,7 @@ export default function Home() {
                           title="Regenerate"
                           onClick={() => handleRegenerate(idx)}
                           disabled={loading}
-                          className="flex items-center justify-center p-1.5 rounded-md text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                          className="flex items-center justify-center p-1.5 rounded-md hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                         >
                           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" /><path d="M3 3v5h5" /></svg>
                         </button>
@@ -437,19 +492,19 @@ export default function Home() {
                             title="More actions"
                             onClick={() => setOpenMenuIdx(openMenuIdx === idx ? null : idx)}
                             onBlur={() => setTimeout(() => setOpenMenuIdx(null), 200)}
-                            className={`flex items-center justify-center p-1.5 rounded-md transition-colors ml-0.5 ${openMenuIdx === idx ? "bg-[var(--bg-hover)] text-[var(--text-primary)]" : "text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)]"}`}
+                            className={`flex items-center justify-center p-1.5 rounded-md transition-colors ${openMenuIdx === idx ? "bg-[var(--bg-elevated)] text-[var(--text-primary)]" : "hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)]"}`}
                           >
                             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="1.5" /><circle cx="19" cy="12" r="1.5" /><circle cx="5" cy="12" r="1.5" /></svg>
                           </button>
                           {openMenuIdx === idx && (
-                            <div className="absolute right-0 bottom-full mb-2 w-44 py-1.5 bg-[var(--bg-elevated)] border border-[var(--border-subtle)] rounded-xl shadow-[var(--shadow-md)] z-50 flex flex-col animate-in fade-in slide-in-from-bottom-2 duration-150 overflow-hidden">
-                              <button className="flex items-center gap-2.5 px-3.5 py-2.5 text-[13px] text-[var(--text-primary)] hover:bg-[var(--bg-hover)] w-full text-left transition-colors font-medium whitespace-nowrap group">
-                                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" className="text-[var(--text-tertiary)] group-hover:text-[var(--text-primary)] shrink-0 transition-colors"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" /></svg>
-                                <span className="relative top-[0.5px]">Provide Feedback</span>
+                            <div className="absolute left-0 bottom-full mb-2 w-48 py-2 bg-[var(--bg-elevated)] border border-[var(--border-subtle)] rounded-xl shadow-[var(--shadow-md)] z-50 flex flex-col animate-in fade-in slide-in-from-bottom-2 duration-150 overflow-hidden">
+                              <button className="flex items-center gap-3 px-4 py-2.5 text-[14px] text-[var(--text-primary)] hover:bg-[var(--bg-hover)] w-full text-left transition-colors font-medium whitespace-nowrap group">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-[var(--text-tertiary)] group-hover:text-[var(--text-primary)] shrink-0 transition-colors"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" /></svg>
+                                Provide Feedback
                               </button>
-                              <button className="flex items-center gap-2.5 px-3.5 py-2.5 text-[13px] text-[var(--error-text)] hover:bg-[var(--error-bg)] w-full text-left transition-colors font-medium whitespace-nowrap">
-                                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z" /><line x1="4" y1="22" x2="4" y2="15" /></svg>
-                                <span className="relative top-[0.5px]">Report Issue</span>
+                              <button className="flex items-center gap-3 px-4 py-2.5 text-[14px] text-[var(--brand)] hover:bg-[var(--error-bg)] hover:text-[var(--error-text)] w-full text-left transition-colors font-medium whitespace-nowrap group">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 group-hover:text-[var(--error-text)] transition-colors"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z" /><line x1="4" y1="22" x2="4" y2="15" /></svg>
+                                Report Issue
                               </button>
                             </div>
                           )}
