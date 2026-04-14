@@ -54,6 +54,7 @@ export default function Home() {
 
   const [theme, setTheme] = useState<"light" | "dark">("light");
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [openMenuIdx, setOpenMenuIdx] = useState<number | null>(null);
 
   const charCount = useMemo(() => inputValue.length, [inputValue]);
   const outputRef = useRef<HTMLDivElement>(null);
@@ -348,14 +349,60 @@ export default function Home() {
                     
                     {/* Actions (for assistant) */}
                     {!isUser && !isSystem && (
-                      <div className="flex mt-3 gap-2">
+                      <div className="flex mt-3 gap-1 items-center">
                          <button
-                           title="Copy text"
-                           className="flex items-center justify-center p-1.5 rounded-md hover:bg-[var(--bg-hover)] text-[var(--text-tertiary)] hover:text-[var(--text-primary)] transition-colors border border-transparent hover:border-[var(--border-subtle)]"
+                           title="Copy"
+                           className="flex items-center justify-center p-1.5 rounded-md text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] transition-colors"
                            onClick={() => navigator.clipboard?.writeText(msg.text).catch(() => {})}
                          >
-                           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>
+                           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>
                          </button>
+                         <button
+                           title="Good response"
+                           className="flex items-center justify-center p-1.5 rounded-md text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] transition-colors"
+                         >
+                           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 9V5a3 3 0 0 0-3-3l-4 9v11h11.28a2 2 0 0 0 2-1.7l1.38-9a2 2 0 0 0-2-2.3zM7 22H4a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h3"/></svg>
+                         </button>
+                         <button
+                           title="Bad response"
+                           className="flex items-center justify-center p-1.5 rounded-md text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] transition-colors"
+                         >
+                           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M10 15v4a3 3 0 0 0 3 3l4-9V2H5.72a2 2 0 0 0-2 1.7l-1.38 9a2 2 0 0 0 2 2.3zm7-13h2.67A2.31 2.31 0 0 1 22 4v7a2.31 2.31 0 0 1-2.33 2H17"/></svg>
+                         </button>
+                         <button
+                           title="Share"
+                           className="flex items-center justify-center p-1.5 rounded-md text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] transition-colors"
+                         >
+                           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg>
+                         </button>
+                         <button
+                           title="Regenerate"
+                           className="flex items-center justify-center p-1.5 rounded-md text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] transition-colors"
+                         >
+                           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
+                         </button>
+                         <div className="relative">
+                           <button
+                             title="More actions"
+                             onClick={() => setOpenMenuIdx(openMenuIdx === idx ? null : idx)}
+                             onBlur={() => setTimeout(() => setOpenMenuIdx(null), 200)}
+                             className={`flex items-center justify-center p-1.5 rounded-md transition-colors ml-0.5 ${openMenuIdx === idx ? 'bg-[var(--bg-hover)] text-[var(--text-primary)]' : 'text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)]'}`}
+                           >
+                             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="1.5"/><circle cx="19" cy="12" r="1.5"/><circle cx="5" cy="12" r="1.5"/></svg>
+                           </button>
+                           {openMenuIdx === idx && (
+                             <div className="absolute right-0 bottom-full mb-2 w-44 py-1.5 bg-[var(--bg-elevated)] border border-[var(--border-subtle)] rounded-xl shadow-[var(--shadow-md)] z-50 flex flex-col animate-in fade-in slide-in-from-bottom-2 duration-150 overflow-hidden">
+                               <button className="flex items-center gap-2.5 px-3.5 py-2.5 text-[13px] text-[var(--text-primary)] hover:bg-[var(--bg-hover)] w-full text-left transition-colors font-medium whitespace-nowrap group">
+                                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" className="text-[var(--text-tertiary)] group-hover:text-[var(--text-primary)] shrink-0 transition-colors"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+                                 <span className="relative top-[0.5px]">Provide Feedback</span>
+                               </button>
+                               <button className="flex items-center gap-2.5 px-3.5 py-2.5 text-[13px] text-[var(--error-text)] hover:bg-[var(--error-bg)] w-full text-left transition-colors font-medium whitespace-nowrap">
+                                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/></svg>
+                                 <span className="relative top-[0.5px]">Report Issue</span>
+                               </button>
+                             </div>
+                           )}
+                         </div>
                       </div>
                     )}
                   </div>
