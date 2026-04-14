@@ -1,8 +1,9 @@
 "use client";
 
-import { FormEvent, useMemo, useState } from 'react';
+import { FormEvent, useMemo, useRef, useEffect, useState } from "react";
 
-type ChatMessage = { role: 'user' | 'assistant' | 'system'; text: string };
+/* ─── Types ─────────────────────────────────────────────────────────── */
+type ChatMessage = { role: "user" | "assistant" | "system"; text: string };
 
 type ResponseFromApi = {
   article?: string;
@@ -12,71 +13,92 @@ type ResponseFromApi = {
   retryAfter?: number;
 };
 
+/* ─── Error mapper ───────────────────────────────────────────────────── */
 function mapApiError(status: number, payload: ResponseFromApi): string {
-  if (status === 400) return payload.error ?? 'Invalid request. Please check your prompt and inputs.';
-  if (status === 401) return 'Unauthorized request. Internal API key is missing or invalid.';
+  if (status === 400) return payload.error ?? "Invalid request. Please check your inputs.";
+  if (status === 401) return "Unauthorized. Internal API key is missing or invalid.";
   if (status === 429) {
-    if (typeof payload.retryAfter === 'number') {
-      return `Rate limit reached. Retry in ${payload.retryAfter} seconds.`;
-    }
-    return 'Rate limit reached. Please wait and try again.';
+    if (typeof payload.retryAfter === "number")
+      return `Rate limit reached. Please retry in ${payload.retryAfter} seconds.`;
+    return "Rate limit reached. Please wait a moment and try again.";
   }
   if (status === 502) {
-    if (payload.code === 'UPSTREAM_TIMEOUT') return 'n8n webhook timed out. Please retry in a few seconds.';
-    if (payload.code === 'UPSTREAM_INVALID_JSON') return 'n8n returned malformed JSON. Check workflow response format.';
-    return 'n8n webhook is unavailable or returned an error.';
+    if (payload.code === "UPSTREAM_TIMEOUT")
+      return "The generation service timed out. Please retry in a few seconds.";
+    if (payload.code === "UPSTREAM_INVALID_JSON")
+      return "Received malformed data from generator. Check workflow response format.";
+    return "Generator service is unavailable or returned an error.";
   }
-  if (status >= 500) return 'Server error while generating article. Please try again.';
-  return payload.error ?? 'Unexpected error while generating article.';
+  if (status >= 500) return "Server error while generating article. Please try again.";
+  return payload.error ?? "Unexpected error while generating article.";
 }
 
+/* ─── Role badge config ──────────────────────────────────────────────── */
+const ROLE_META = {
+  assistant: { label: "AI", color: "#c96442" },
+  user:      { label: "You", color: "var(--text-secondary)" },
+  system:    { label: "System", color: "var(--text-tertiary)" },
+} as const;
+
+/* ─── Tone options ───────────────────────────────────────────────────── */
+const TONES = ["Professional", "Friendly", "Conversational", "Persuasive", "Academic", "Creative"] as const;
+
+/* ─── Main component ─────────────────────────────────────────────────── */
 export default function Home() {
-  const [prompt, setPrompt] = useState('');
-  const [topic, setTopic] = useState('');
-  const [tone, setTone] = useState('Professional');
+  const [prompt, setPrompt]   = useState("");
+  const [topic, setTopic]     = useState("");
+  const [tone, setTone]       = useState<string>("Professional");
   const [messages, setMessages] = useState<ChatMessage[]>([
-    { role: 'system', text: 'Enter a prompt and click Generate for instant article output.' },
+    {
+      role: "system",
+      text: "Welcome! Fill in a topic or write a custom prompt below, then click Generate to create an article.",
+    },
   ]);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError]     = useState<string | null>(null);
 
   const charCount = useMemo(() => prompt.length, [prompt]);
+  const outputRef = useRef<HTMLDivElement>(null);
 
+  /* Scroll to latest message */
+  useEffect(() => {
+    if (messages.length > 1 && outputRef.current) {
+      outputRef.current.lastElementChild?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+  }, [messages]);
+
+  /* ─── Submit ─────────────────────────────────────────────────────── */
   const handleSubmit = async (event: FormEvent) => {
     event.preventDefault();
     setError(null);
 
     const cleanPromptInput = prompt.trim();
-    const cleanTopic = topic.trim();
-    const cleanTone = tone.trim();
+    const cleanTopic       = topic.trim();
+    const cleanTone        = tone.trim();
 
     if (!cleanPromptInput && !cleanTopic) {
-      setError('Add a topic or write a prompt to generate an article.');
+      setError("Please enter a topic or write a prompt to generate an article.");
       return;
     }
-
-    const cleanPrompt = cleanPromptInput.length >= 5 ? cleanPromptInput : '';
-
     if (cleanPromptInput.length > 500) {
-      setError('Prompt cannot exceed 500 characters.');
+      setError("Prompt cannot exceed 500 characters.");
       return;
     }
+
+    const cleanPrompt = cleanPromptInput.length >= 5 ? cleanPromptInput : "";
 
     setLoading(true);
-    const userRequestSummary = cleanPrompt || `Topic: ${cleanTopic}${cleanTone ? ` | Tone: ${cleanTone}` : ''}`;
-    setMessages((prev) => [...prev, { role: 'user', text: userRequestSummary }]);
+    const summary =
+      cleanPrompt || `Topic: ${cleanTopic}${cleanTone ? ` · Tone: ${cleanTone}` : ""}`;
+    setMessages((prev) => [...prev, { role: "user", text: summary }]);
 
     try {
       const clientApiKey = process.env.NEXT_PUBLIC_CLIENT_API_KEY;
-      const headers: HeadersInit = {
-        'Content-Type': 'application/json',
-      };
-      if (clientApiKey) {
-        headers['x-internal-api-key'] = clientApiKey;
-      }
+      const headers: HeadersInit = { "Content-Type": "application/json" };
+      if (clientApiKey) headers["x-internal-api-key"] = clientApiKey;
 
-      const response = await fetch('/api/generate-article', {
-        method: 'POST',
+      const response = await fetch("/api/generate-article", {
+        method: "POST",
         headers,
         body: JSON.stringify({ prompt: cleanPrompt, topic: cleanTopic, tone: cleanTone }),
       });
@@ -85,134 +107,503 @@ export default function Home() {
       try {
         data = (await response.json()) as ResponseFromApi;
       } catch {
-        data = { error: 'Invalid JSON response from server.' };
+        data = { error: "Invalid JSON response from server." };
       }
 
       if (!response.ok || data.error) {
         setError(mapApiError(response.status, data));
         return;
       }
-
-      if (!data.article || !data.article.trim()) {
-        setError('Generator returned empty content. Please retry.');
+      if (!data.article?.trim()) {
+        setError("Generator returned empty content. Please retry.");
         return;
       }
 
-      setMessages((prev) => [...prev, { role: 'assistant', text: data.article as string }]);
-      setPrompt('');
+      setMessages((prev) => [...prev, { role: "assistant", text: data.article as string }]);
+      setPrompt("");
 
       if (data.rateLimit?.remaining !== undefined && data.rateLimit.remaining <= 1) {
-        setError('Approaching rate limit. Slow down to avoid throttling.');
+        setError("Approaching rate limit. Slow down to avoid throttling.");
       }
     } catch (err) {
       console.error(err);
-      setError('Network error: unable to reach article generator.');
+      setError("Network error: unable to reach article generator.");
     } finally {
       setLoading(false);
     }
   };
 
+  /* ─── Reset ──────────────────────────────────────────────────────── */
+  const handleReset = () => {
+    setPrompt("");
+    setTopic("");
+    setTone("Professional");
+    setError(null);
+  };
+
+  /* ─── Render ─────────────────────────────────────────────────────── */
   return (
-    <main className="relative min-h-screen overflow-hidden bg-[radial-gradient(circle_at_20%_20%,_rgba(52,211,153,0.2),_rgba(15,23,42,0.95)_44%)] text-cyan-50">
-      <div className="pointer-events-none absolute inset-0 bg-[url('data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'100\' height=\'100\' viewBox=\'0 0 100 100\'%3E%3Cfilter id=\'a\'%3E%3CfeTurbulence type=\'fractalNoise\' baseFrequency=\'0.9\' numOctaves=\'3\' stitchTiles=\'stitch\'/%3E%3C/filter%3E%3Crect width=\'100%\' height=\'100%\' filter=\'url(%23a)\' opacity=\'0.05\'/%3E%3C/svg%3E')]" />
-      <div className="mx-auto flex min-h-screen w-full max-w-6xl flex-col p-6 md:p-10">
-        <div className="mb-4 flex items-center justify-between gap-4 rounded-2xl border border-cyan-400/30 bg-slate-900/30 p-4 shadow-[0_20px_80px_rgba(0,0,0,0.4)] backdrop-blur-md">
-          <div>
-            <h1 className="text-3xl font-black tracking-tight text-cyan-50 sm:text-4xl">AI Article Forge</h1>
-            <p className="mt-1 text-sm text-cyan-200/90">Server-side secured article generator with rate limiting under the hood.</p>
+    <main
+      style={{
+        minHeight: "100vh",
+        backgroundColor: "var(--bg-base)",
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        padding: "0 16px 80px",
+      }}
+    >
+      {/* ── Topbar ── */}
+      <header
+        style={{
+          width: "100%",
+          maxWidth: 760,
+          padding: "28px 0 0",
+          display: "flex",
+          alignItems: "flex-start",
+          justifyContent: "space-between",
+          gap: 16,
+        }}
+      >
+        <div>
+          <div
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 8,
+              marginBottom: 6,
+            }}
+          >
+            {/* Anthropic-style logo mark */}
+            <span
+              aria-hidden="true"
+              style={{
+                display: "inline-block",
+                width: 28,
+                height: 28,
+                borderRadius: "50%",
+                background: "var(--brand)",
+                flexShrink: 0,
+              }}
+            />
+            <h1
+              style={{
+                margin: 0,
+                fontSize: 22,
+                fontWeight: 500,
+                fontFamily: "var(--font-serif)",
+                letterSpacing: "-0.02em",
+                color: "var(--text-primary)",
+              }}
+            >
+              AI Article Forge
+            </h1>
           </div>
-          <kbd className="rounded-lg border border-cyan-300/40 bg-cyan-950/40 px-2 py-1 text-xs text-cyan-100">5 req/min</kbd>
+          <p
+            style={{
+              margin: 0,
+              fontSize: 13,
+              color: "var(--text-tertiary)",
+              lineHeight: 1.5,
+            }}
+          >
+            Generate polished articles with your n8n-powered AI workflow.
+          </p>
         </div>
 
-        <form onSubmit={handleSubmit} className="grid gap-4 rounded-2xl border border-emerald-300/20 bg-slate-900/50 p-6 shadow-[0_12px_42px_rgba(0,0,0,0.45)] backdrop-blur-md">
-          <label className="space-y-2 text-sm">
-            <span className="text-cyan-100">Topic</span>
-            <input
-              value={topic}
-              onChange={(e) => setTopic(e.target.value)}
-              placeholder="e.g., next-generation AR experiences"
-              className="w-full rounded-lg border border-cyan-400/40 bg-slate-950/50 px-3 py-2 text-sm text-cyan-50 outline-none placeholder:text-cyan-300 focus:border-cyan-200 focus:ring-2 focus:ring-cyan-500/40"
-            />
-          </label>
-          <label className="space-y-2 text-sm">
-            <span className="text-cyan-100">Tone</span>
-            <select
-              value={tone}
-              onChange={(e) => setTone(e.target.value)}
-              className="w-full cursor-pointer rounded-lg border border-cyan-400/40 bg-slate-950/50 px-3 py-2 text-sm text-cyan-50 outline-none focus:border-cyan-200 focus:ring-2 focus:ring-cyan-500/40"
-            >
-              <option>Professional</option>
-              <option>Friendly</option>
-              <option>Conversational</option>
-              <option>Persuasive</option>
-            </select>
-          </label>
-          <label className="space-y-2 text-sm">
-            <span className="text-cyan-100">Prompt</span>
-            <textarea
-              value={prompt}
-              onChange={(e) => setPrompt(e.target.value)}
-              placeholder="Frame a 500-word explainer on why edge computing is the future..."
-              rows={5}
-              className="w-full resize-none rounded-lg border border-cyan-400/40 bg-slate-950/50 px-3 py-2 text-sm text-cyan-50 outline-none placeholder:text-cyan-300 focus:border-cyan-200 focus:ring-2 focus:ring-cyan-500/40"
-            />
-            <small className={`text-xs font-medium ${charCount > 450 ? 'text-rose-300' : 'text-cyan-200'}`}>
-              {charCount}/500 characters (optional if Topic is filled)
-            </small>
-          </label>
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <button
-              type="submit"
-              disabled={loading}
-              className="inline-flex items-center gap-2 rounded-xl bg-cyan-500 px-4 py-2 text-sm font-bold text-slate-950 transition hover:bg-cyan-400 disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              {loading ? 'Generating...' : 'Generate Article'}
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setPrompt('');
-                setTopic('');
-                setTone('Professional');
-                setError(null);
+        {/* Rate limit badge */}
+        <span
+          title="Maximum 5 requests per minute"
+          style={{
+            flexShrink: 0,
+            marginTop: 4,
+            fontSize: 11,
+            fontWeight: 600,
+            letterSpacing: "0.05em",
+            textTransform: "uppercase",
+            color: "var(--text-tertiary)",
+            border: "1px solid var(--border-default)",
+            borderRadius: "var(--radius-sm)",
+            padding: "4px 10px",
+            background: "var(--bg-elevated)",
+          }}
+        >
+          5 req / min
+        </span>
+      </header>
+
+      {/* ── Divider ── */}
+      <div
+        style={{
+          width: "100%",
+          maxWidth: 760,
+          height: 1,
+          background: "var(--border-subtle)",
+          margin: "20px 0 28px",
+        }}
+      />
+
+      {/* ── Form card ── */}
+      <div
+        style={{
+          width: "100%",
+          maxWidth: 760,
+          background: "var(--bg-surface)",
+          border: "1px solid var(--border-subtle)",
+          borderRadius: "var(--radius-xl)",
+          boxShadow: "var(--shadow-md)",
+          overflow: "hidden",
+        }}
+      >
+        <form onSubmit={handleSubmit} noValidate>
+          {/* Card header */}
+          <div
+            style={{
+              padding: "20px 24px 16px",
+              borderBottom: "1px solid var(--border-subtle)",
+              background: "var(--bg-elevated)",
+            }}
+          >
+            <p
+              style={{
+                margin: 0,
+                fontSize: 13,
+                fontWeight: 600,
+                color: "var(--text-secondary)",
+                letterSpacing: "0.02em",
               }}
-              className="rounded-xl border border-cyan-400/50 px-4 py-2 text-sm text-cyan-100 hover:bg-cyan-950/30"
             >
-              Reset
-            </button>
+              New Article
+            </p>
           </div>
 
-          {error && (
-            <p className="rounded-lg border border-rose-400/40 bg-rose-950/30 px-3 py-2 text-sm text-rose-200">{error}</p>
-          )}
-        </form>
-
-        <section className="mt-6 space-y-3">
-          {messages.map((message, idx) => (
-            <article
-              key={`${message.role}-${idx}`}
-              className={`rounded-2xl p-4 ${
-                message.role === 'assistant'
-                  ? 'bg-cyan-950/40 border border-cyan-300/20'
-                  : message.role === 'user'
-                  ? 'bg-slate-900/70 border border-cyan-500/30'
-                  : 'bg-slate-800/65 border border-amber-400/20'
-              }`}
+          {/* Fields */}
+          <div style={{ padding: "24px", display: "grid", gap: 20 }}>
+            {/* Topic + Tone row */}
+            <div
+              style={{
+                display: "grid",
+                gap: 16,
+                gridTemplateColumns: "1fr auto",
+              }}
             >
-              <header className="mb-2 flex items-center gap-2 text-xs uppercase tracking-wide text-cyan-200/90">
-                <span className={message.role === 'assistant' ? 'text-cyan-300' : message.role === 'user' ? 'text-emerald-200' : 'text-amber-200'}>
-                  {message.role}
+              {/* Topic */}
+              <div>
+                <label htmlFor="topic-input">
+                  <span className="label-text">Topic</span>
+                </label>
+                <input
+                  id="topic-input"
+                  type="text"
+                  value={topic}
+                  onChange={(e) => setTopic(e.target.value)}
+                  placeholder="e.g., next-generation AR experiences"
+                  autoComplete="off"
+                  spellCheck={false}
+                />
+              </div>
+
+              {/* Tone */}
+              <div style={{ minWidth: 160 }}>
+                <label htmlFor="tone-select">
+                  <span className="label-text">Tone</span>
+                </label>
+                <select
+                  id="tone-select"
+                  value={tone}
+                  onChange={(e) => setTone(e.target.value)}
+                  style={{ cursor: "pointer" }}
+                >
+                  {TONES.map((t) => (
+                    <option key={t} value={t}>
+                      {t}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            {/* Prompt */}
+            <div>
+              <label htmlFor="prompt-textarea">
+                <span className="label-text">
+                  Custom Prompt
+                  <span
+                    style={{
+                      marginLeft: 6,
+                      fontWeight: 400,
+                      letterSpacing: 0,
+                      textTransform: "none",
+                      color: "var(--text-placeholder)",
+                    }}
+                  >
+                    (optional if Topic is filled)
+                  </span>
                 </span>
-                <span>•</span>
-                <span>{message.role === 'assistant' ? 'AI' : message.role === 'user' ? 'You' : 'System'}</span>
-              </header>
-              <p className="whitespace-pre-wrap break-words text-sm leading-relaxed text-slate-100">
-                {message.text}
-              </p>
-            </article>
-          ))}
-        </section>
+              </label>
+              <textarea
+                id="prompt-textarea"
+                value={prompt}
+                onChange={(e) => setPrompt(e.target.value)}
+                placeholder="Frame a 500-word explainer on why edge computing is the future of cloud infrastructure..."
+                rows={5}
+                style={{ resize: "vertical" }}
+              />
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "flex-end",
+                  marginTop: 6,
+                }}
+              >
+                <span
+                  style={{
+                    fontSize: 12,
+                    fontWeight: 500,
+                    color: charCount > 450 ? "var(--error-text)" : "var(--text-placeholder)",
+                    transition: "color 0.15s",
+                  }}
+                >
+                  {charCount} / 500
+                </span>
+              </div>
+            </div>
+
+            {/* Error banner */}
+            {error && (
+              <div
+                role="alert"
+                className="animate-in"
+                style={{
+                  display: "flex",
+                  alignItems: "flex-start",
+                  gap: 10,
+                  padding: "12px 14px",
+                  background: "var(--error-bg)",
+                  border: "1px solid var(--error-border)",
+                  borderRadius: "var(--radius-md)",
+                  fontSize: 13,
+                  color: "var(--error-text)",
+                  lineHeight: 1.5,
+                }}
+              >
+                {/* icon */}
+                <svg
+                  aria-hidden="true"
+                  width="16"
+                  height="16"
+                  viewBox="0 0 16 16"
+                  fill="none"
+                  style={{ flexShrink: 0, marginTop: 1 }}
+                >
+                  <circle cx="8" cy="8" r="7" stroke="currentColor" strokeWidth="1.5" />
+                  <path d="M8 4.5v4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+                  <circle cx="8" cy="11" r="0.75" fill="currentColor" />
+                </svg>
+                {error}
+              </div>
+            )}
+
+            {/* Actions */}
+            <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+              <button type="submit" disabled={loading} className="btn-primary">
+                {loading ? (
+                  <>
+                    <span className="loading-spinner" aria-hidden="true" />
+                    Generating…
+                  </>
+                ) : (
+                  <>
+                    <svg
+                      aria-hidden="true"
+                      width="15"
+                      height="15"
+                      viewBox="0 0 15 15"
+                      fill="none"
+                    >
+                      <path
+                        d="M1 7.5L7.5 1L14 7.5M7.5 2v11"
+                        stroke="currentColor"
+                        strokeWidth="1.5"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      />
+                    </svg>
+                    Generate Article
+                  </>
+                )}
+              </button>
+
+              <button
+                type="button"
+                onClick={handleReset}
+                className="btn-secondary"
+                disabled={loading}
+              >
+                Reset
+              </button>
+            </div>
+          </div>
+        </form>
       </div>
+
+      {/* ── Messages ── */}
+      {messages.length > 0 && (
+        <div
+          ref={outputRef}
+          role="log"
+          aria-live="polite"
+          style={{
+            width: "100%",
+            maxWidth: 760,
+            marginTop: 32,
+            display: "grid",
+            gap: 16,
+          }}
+        >
+          {messages.map((msg, idx) => {
+            const meta = ROLE_META[msg.role];
+            const isAssistant = msg.role === "assistant";
+            const isSystem    = msg.role === "system";
+
+            return (
+              <article
+                key={`${msg.role}-${idx}`}
+                className="animate-in card"
+                style={{
+                  padding: "0",
+                  overflow: "hidden",
+                  animationDelay: `${idx * 0.04}s`,
+                  opacity: isSystem ? 0.8 : 1,
+                }}
+              >
+                {/* Message header */}
+                <header
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 8,
+                    padding: "12px 18px",
+                    borderBottom: "1px solid var(--border-subtle)",
+                    background: isAssistant
+                      ? "var(--brand-subtle)"
+                      : "var(--bg-elevated)",
+                  }}
+                >
+                  {/* Role dot */}
+                  <span
+                    aria-hidden="true"
+                    style={{
+                      width: 8,
+                      height: 8,
+                      borderRadius: "50%",
+                      background: meta.color,
+                      flexShrink: 0,
+                    }}
+                  />
+                  <span
+                    style={{
+                      fontSize: 11,
+                      fontWeight: 700,
+                      letterSpacing: "0.08em",
+                      textTransform: "uppercase",
+                      color: isAssistant ? "var(--brand)" : "var(--text-tertiary)",
+                    }}
+                  >
+                    {meta.label}
+                  </span>
+
+                  {/* Copy button for assistant */}
+                  {isAssistant && (
+                    <button
+                      type="button"
+                      aria-label="Copy article to clipboard"
+                      title="Copy to clipboard"
+                      onClick={() =>
+                        navigator.clipboard?.writeText(msg.text).catch(() => {})
+                      }
+                      style={{
+                        marginLeft: "auto",
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: 5,
+                        fontSize: 11,
+                        fontWeight: 500,
+                        color: "var(--text-tertiary)",
+                        background: "transparent",
+                        border: "1px solid var(--border-default)",
+                        borderRadius: "var(--radius-sm)",
+                        padding: "3px 8px",
+                        cursor: "pointer",
+                        transition: "background 0.15s, color 0.15s",
+                      }}
+                      onMouseOver={(e) => {
+                        (e.currentTarget as HTMLButtonElement).style.background =
+                          "var(--bg-hover)";
+                        (e.currentTarget as HTMLButtonElement).style.color =
+                          "var(--text-primary)";
+                      }}
+                      onMouseOut={(e) => {
+                        (e.currentTarget as HTMLButtonElement).style.background =
+                          "transparent";
+                        (e.currentTarget as HTMLButtonElement).style.color =
+                          "var(--text-tertiary)";
+                      }}
+                    >
+                      <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">
+                        <rect x="1" y="3" width="7" height="8" rx="1" stroke="currentColor" strokeWidth="1.2"/>
+                        <path d="M3.5 3V2a1 1 0 0 1 1-1h4.5a1 1 0 0 1 1 1v7a1 1 0 0 1-1 1H8" stroke="currentColor" strokeWidth="1.2"/>
+                      </svg>
+                      Copy
+                    </button>
+                  )}
+                </header>
+
+                {/* Message body */}
+                <p
+                  style={{
+                    margin: 0,
+                    padding: "16px 18px",
+                    fontSize: isAssistant ? 14.5 : 13.5,
+                    lineHeight: isAssistant ? 1.75 : 1.6,
+                    color: isSystem
+                      ? "var(--text-tertiary)"
+                      : "var(--text-primary)",
+                    whiteSpace: "pre-wrap",
+                    wordBreak: "break-word",
+                    fontFamily: isAssistant ? "var(--font-sans)" : undefined,
+                  }}
+                >
+                  {msg.text}
+                </p>
+              </article>
+            );
+          })}
+        </div>
+      )}
+
+      {/* ── Footer ── */}
+      <footer
+        style={{
+          width: "100%",
+          maxWidth: 760,
+          marginTop: 48,
+          paddingTop: 20,
+          borderTop: "1px solid var(--border-subtle)",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          flexWrap: "wrap",
+          gap: 8,
+        }}
+      >
+        <span style={{ fontSize: 12, color: "var(--text-placeholder)" }}>
+          AI Article Forge · Powered by n8n
+        </span>
+        <span style={{ fontSize: 12, color: "var(--text-placeholder)" }}>
+          Responses may not be accurate. Always review generated content.
+        </span>
+      </footer>
     </main>
   );
 }
