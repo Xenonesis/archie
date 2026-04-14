@@ -1,32 +1,26 @@
 @import "tailwindcss";
 
-/* ─── Design Tokens ─────────────────────────────────────────────────── */
 :root {
-  /* Surface */
   --bg-base:        #faf9f7;
   --bg-surface:     #ffffff;
   --bg-elevated:    #f5f4f1;
   --bg-subtle:      #f0ede8;
   --bg-hover:       #ebe8e2;
 
-  /* Border */
   --border-subtle:  #e5e1da;
   --border-default: #d5d0c8;
   --border-strong:  #b5ae9e;
 
-  /* Text */
   --text-primary:   #1a1814;
   --text-secondary: #4a4540;
   --text-tertiary:  #7a726a;
   --text-placeholder: #a09890;
 
-  /* Brand — warm terracotta (Anthropic-adjacent) */
   --brand:          #c96442;
   --brand-hover:    #b55838;
   --brand-subtle:   #f5ede8;
   --brand-border:   #e8c5b5;
 
-  /* Semantic */
   --error-bg:       #fef3ee;
   --error-border:   #f5c8b0;
   --error-text:     #9e3a1a;
@@ -34,24 +28,20 @@
   --warning-text:   #7a5a0a;
   --success-text:   #2a6a40;
 
-  /* Shadows */
   --shadow-sm:      0 1px 2px rgba(26,24,20,0.06);
   --shadow-md:      0 4px 12px rgba(26,24,20,0.08), 0 1px 3px rgba(26,24,20,0.06);
   --shadow-lg:      0 8px 32px rgba(26,24,20,0.10), 0 2px 6px rgba(26,24,20,0.07);
 
-  /* Radius */
   --radius-sm:      6px;
   --radius-md:      10px;
   --radius-lg:      14px;
   --radius-xl:      18px;
 
-  /* Typography */
   --font-sans:      'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   --font-serif:     'Newsreader', Georgia, 'Times New Roman', serif;
   --font-mono:      'SF Mono', 'Fira Code', Menlo, Monaco, Consolas, monospace;
 }
 
-/* ─── Dark Theme ────────────────────────────────────────────────────── */
 @media (prefers-color-scheme: dark) {
   :root {
     --bg-base:        #17151280;
@@ -87,9 +77,33 @@
   }
 }
 
-/* ─── Data attribute override (manual toggle future-ready) ──────────── */
+[data-theme="light"] {
+  --bg-base:        #faf9f7;
+  --bg-surface:     #ffffff;
+  --bg-elevated:    #f5f4f1;
+  --bg-subtle:      #f0ede8;
+  --bg-hover:       #ebe8e2;
+  --border-subtle:  #e5e1da;
+  --border-default: #d5d0c8;
+  --border-strong:  #b5ae9e;
+  --text-primary:   #1a1814;
+  --text-secondary: #4a4540;
+  --text-tertiary:  #7a726a;
+  --text-placeholder: #a09890;
+  --brand:          #c96442;
+  --brand-hover:    #b55838;
+  --brand-subtle:   #f5ede8;
+  --brand-border:   #e8c5b5;
+  --error-bg:       #fef3ee;
+  --error-border:   #f5c8b0;
+  --error-text:     #9e3a1a;
+  --shadow-sm:      0 1px 2px rgba(26,24,20,0.06);
+  --shadow-md:      0 4px 12px rgba(26,24,20,0.08), 0 1px 3px rgba(26,24,20,0.06);
+  --shadow-lg:      0 8px 32px rgba(26,24,20,0.10), 0 2px 6px rgba(26,24,20,0.07);
+}
+
 [data-theme="dark"] {
-  --bg-base:        #17151280;
+  --bg-base:        #171512;
   --bg-surface:     #1e1b17;
   --bg-elevated:    #252118;
   --bg-subtle:      #2c2820;
@@ -113,7 +127,7 @@
   --shadow-lg:      0 8px 32px rgba(0,0,0,0.5), 0 2px 6px rgba(0,0,0,0.3);
 }
 
-/* ─── Base Reset ────────────────────────────────────────────────────── */
+
 *, *::before, *::after {
   box-sizing: border-box;
 }
@@ -142,7 +156,6 @@ body {
   color: var(--text-primary);
 }
 
-/* ─── Typography ────────────────────────────────────────────────────── */
 h1, h2, h3, h4, h5, h6 {
   font-family: var(--font-serif);
   font-weight: 500;
@@ -151,12 +164,10 @@ h1, h2, h3, h4, h5, h6 {
   color: var(--text-primary);
 }
 
-/* ─── Form elements ─────────────────────────────────────────────────── */
 button, input, select, textarea {
   font: inherit;
 }
 
-/* Field wrapper — label wraps span + input */
 .field-wrapper {
   display: flex;
   flex-direction: column;
@@ -192,13 +203,11 @@ input:focus, textarea:focus, select:focus {
   box-shadow: 0 0 0 3px rgba(201, 100, 66, 0.12);
 }
 
-/* ─── Scrollbar ─────────────────────────────────────────────────────── */
 ::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 99px; }
 ::-webkit-scrollbar-thumb:hover { background: var(--text-tertiary); }
 
-/* ─── Utility classes used by page.tsx ──────────────────────────────── */
 .card {
   background: var(--bg-surface);
   border: 1px solid var(--border-subtle);
@@ -271,7 +280,6 @@ input:focus, textarea:focus, select:focus {
   color: var(--text-primary);
 }
 
-/* ─── Animations ────────────────────────────────────────────────────── */
 @keyframes fade-in-up {
   from { opacity: 0; transform: translateY(8px); }
   to   { opacity: 1; transform: translateY(0); }

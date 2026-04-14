@@ -11,7 +11,25 @@ const INTERNAL_API_KEY = process.env.INTERNAL_API_KEY;
 const WEBHOOK_TIMEOUT_MS = toPositiveInteger(process.env.WEBHOOK_TIMEOUT_MS, 20_000);
 const RUNTIME_CONFIG_ERROR = validateRuntimeConfig();
 
-// In-memory rate limiter (works for single-instance/dev only). For production use Redis/memcache.
+const ALLOWED_TONES = new Set([
+  'professional',
+  'friendly',
+  'conversational',
+  'persuasive',
+  'academic',
+  'creative',
+]);
+
+const BLOCKED_PATTERNS = [
+  /\b(ignore (previous|all|prior|above|system) (instructions?|prompts?|context))\b/i,
+  /\b(jailbreak|dan mode|developer mode|god mode)\b/i,
+  /\b(reveal|expose|show|output|print|display|repeat|echo)\b.{0,40}\b(system prompt|instructions?|api key|secret|password|token)\b/i,
+  /\b(act as|pretend to be|you are now|from now on you are)\b.{0,30}\b(admin|root|superuser|unrestricted|uncensored)\b/i,
+  /<\s*(script|iframe|object|embed|form|input|link|style)[^>]*>/i,
+  /javascript\s*:/i,
+  /on\w+\s*=/i,
+];
+
 const rateMap = new Map<string, { count: number; resetAt: number }>();
 
 type ApiErrorCode =
@@ -26,9 +44,7 @@ type ApiErrorCode =
 
 function toPositiveInteger(value: string | undefined, fallback: number): number {
   const parsed = Number(value);
-  if (!Number.isFinite(parsed) || parsed <= 0) {
-    return fallback;
-  }
+  if (!Number.isFinite(parsed) || parsed <= 0) return fallback;
   return Math.floor(parsed);
 }
 
@@ -47,7 +63,6 @@ function validateRuntimeConfig(): string | null {
   } catch {
     return 'N8N_WEBHOOK_URL is not a valid URL.';
   }
-
   return null;
 }
 
@@ -62,9 +77,7 @@ function errorResponse(
 
 function getClientIp(request: Request): string {
   const forwarded = request.headers.get('x-forwarded-for') || request.headers.get('x-real-ip');
-  if (forwarded) {
-    return forwarded.split(',')[0].trim();
-  }
+  if (forwarded) return forwarded.split(',')[0].trim();
   return 'unknown';
 }
 
@@ -75,20 +88,34 @@ function checkRateLimit(ip: string): { allowed: boolean; remaining: number; rese
     rateMap.set(ip, { count: 1, resetAt: now + RATE_LIMIT_WINDOW_MS });
     return { allowed: true, remaining: RATE_LIMIT_MAX - 1, reset: now + RATE_LIMIT_WINDOW_MS };
   }
-
   if (entry.count >= RATE_LIMIT_MAX) {
     return { allowed: false, remaining: 0, reset: entry.resetAt };
   }
-
   entry.count += 1;
   rateMap.set(ip, entry);
-
   return { allowed: true, remaining: RATE_LIMIT_MAX - entry.count, reset: entry.resetAt };
+}
+
+function stripHtml(value: string): string {
+  return value
+    .replace(/<[^>]*>/g, ' ')
+    .replace(/&[a-z#0-9]+;/gi, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
 }
 
 function cleanText(value: unknown): string {
   if (typeof value !== 'string') return '';
-  return value.replace(/\s+/g, ' ').trim();
+  return stripHtml(value.replace(/\s+/g, ' ').trim());
+}
+
+function checkPromptGuardrails(text: string): string | null {
+  for (const pattern of BLOCKED_PATTERNS) {
+    if (pattern.test(text)) {
+      return 'Your prompt contains content that is not allowed. Please revise and try again.';
+    }
+  }
+  return null;
 }
 
 function normalizeArticleText(value: string): string {
@@ -97,7 +124,6 @@ function normalizeArticleText(value: string): string {
     .split('\n')
     .map((line) => line.replace(/[ \t]+$/g, ''))
     .join('\n');
-
   return trimmedLines.replace(/\n{3,}/g, '\n\n').trim();
 }
 
@@ -106,31 +132,20 @@ function extractArticleText(data: unknown): string | null {
     const normalized = normalizeArticleText(data);
     return normalized || null;
   }
-
   if (Array.isArray(data)) {
     const collected = data
       .map((entry) => extractArticleText(entry))
       .filter((entry): entry is string => Boolean(entry));
-    if (collected.length > 0) {
-      return collected.join('\n\n');
-    }
+    if (collected.length > 0) return collected.join('\n\n');
     return null;
   }
-
-  if (!data || typeof data !== 'object') {
-    return null;
-  }
-
+  if (!data || typeof data !== 'object') return null;
   const candidateKeys = ['article', 'text', 'content', 'output', 'result', 'message', 'data', 'response', 'body'];
   const record = data as Record<string, unknown>;
-
   for (const key of candidateKeys) {
     const value = extractArticleText(record[key]);
-    if (value) {
-      return value;
-    }
+    if (value) return value;
   }
-
   return normalizeArticleText(JSON.stringify(data, null, 2));
 }
 
@@ -185,7 +200,8 @@ export async function POST(request: Request) {
   const bodyObject = body as Record<string, unknown>;
   const promptInput = cleanText(typeof bodyObject.prompt === 'string' ? bodyObject.prompt : '');
   const topic = cleanText(typeof bodyObject.topic === 'string' ? bodyObject.topic : '');
-  const tone = cleanText(typeof bodyObject.tone === 'string' ? bodyObject.tone : '');
+  const rawTone = cleanText(typeof bodyObject.tone === 'string' ? bodyObject.tone : '');
+  const tone = ALLOWED_TONES.has(rawTone.toLowerCase()) ? rawTone : 'Professional';
 
   if (promptInput.length > 500) {
     return errorResponse(400, 'BAD_REQUEST', 'prompt cannot exceed 500 chars.');
@@ -195,8 +211,14 @@ export async function POST(request: Request) {
     return errorResponse(400, 'BAD_REQUEST', 'topic max length is 100 chars.');
   }
 
-  if (tone.length > 40) {
-    return errorResponse(400, 'BAD_REQUEST', 'tone max length is 40 chars.');
+  const promptGuardError = checkPromptGuardrails(promptInput + ' ' + topic);
+  if (promptGuardError) {
+    return errorResponse(400, 'BAD_REQUEST', promptGuardError);
+  }
+
+  const apiKey = request.headers.get('x-internal-api-key');
+  if (INTERNAL_API_KEY && apiKey !== INTERNAL_API_KEY) {
+    return errorResponse(401, 'UNAUTHORIZED', 'Invalid internal API key.');
   }
 
   const prompt = promptInput.length >= 5 ? promptInput : '';
@@ -210,12 +232,6 @@ export async function POST(request: Request) {
   }
 
   const effectivePrompt = prompt || `Write a ${tone || 'professional'} article about ${topic}.`;
-
-  // Secret header-based optional guard: only enforced when INTERNAL_API_KEY is configured.
-  const apiKey = request.headers.get('x-internal-api-key');
-  if (INTERNAL_API_KEY && apiKey !== INTERNAL_API_KEY) {
-    return errorResponse(401, 'UNAUTHORIZED', 'Invalid internal API key.');
-  }
 
   const payload = {
     prompt: effectivePrompt,
@@ -310,11 +326,9 @@ export async function POST(request: Request) {
     if (error instanceof Error && error.name === 'TimeoutError') {
       return errorResponse(502, 'UPSTREAM_TIMEOUT', 'n8n webhook timed out. Please retry.');
     }
-
     if (error instanceof TypeError) {
       return errorResponse(502, 'UPSTREAM_ERROR', 'n8n webhook network failure. Please retry.');
     }
-
     console.error('[generate-article] Internal error:', error);
     return errorResponse(500, 'INTERNAL_ERROR', 'Internal server error.');
   }
