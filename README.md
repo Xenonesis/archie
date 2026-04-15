@@ -234,7 +234,7 @@ Home (page.tsx)
 ### Directory Layout
 
 ```
-n8/
+archie/
 ├── .env.local                          # Environment variables (not committed)
 ├── .gitignore                          # Git ignore rules
 ├── AGENTS.md                           # AI agent guidelines
@@ -248,13 +248,17 @@ n8/
 ├── tsconfig.json                       # TypeScript configuration
 ├── scripts/
 │   └── smoke.mjs                       # Smoke test script
+├── tasks/
+│   └── todo.md                         # Development checklist and deployment notes
 ├── public/
-│   └── ...                             # Static assets
+│   └── ...                             # Static assets (SVG icons)
 └── src/
     └── app/
         ├── globals.css                 # Global styles, design tokens, theme
         ├── layout.tsx                  # Root layout with metadata
         ├── page.tsx                    # Main chat interface (client component)
+        ├── about/
+        │   └── page.tsx                # About page with workflow explanation
         └── api/
             └── generate-article/
                 └── route.ts            # Backend proxy route handler
@@ -264,11 +268,13 @@ n8/
 
 | File | Purpose | Lines |
 |------|---------|-------|
-| `src/app/page.tsx` | Main chat UI component with sidebar, message feed, and input area | ~451 |
+| `src/app/page.tsx` | Main chat UI component with sidebar, message feed, input area, and chat sessions | ~921 |
 | `src/app/layout.tsx` | Root HTML layout with metadata, fonts, and theme-color meta tags | ~30 |
 | `src/app/globals.css` | Tailwind CSS import, design tokens, dark theme, utility classes | ~280 |
-| `src/app/api/generate-article/route.ts` | Next.js Route Handler — n8n proxy with auth, rate limiting, validation | ~320 |
+| `src/app/api/generate-article/route.ts` | Next.js Route Handler — n8n proxy with auth, rate limiting, validation, and blocking | ~314 |
+| `src/app/about/page.tsx` | About page explaining workflow, guardrails, and GitHub integration | ~396 |
 | `scripts/smoke.mjs` | Automated smoke test for API health, validation, and rate limiting | ~70 |
+| `tasks/todo.md` | Development checklist for repo cleanup and deployment | ~12 |
 | `next.config.ts` | Next.js configuration (default) | ~5 |
 | `tsconfig.json` | TypeScript compiler options with path aliases | ~30 |
 | `eslint.config.mjs` | ESLint configuration for code linting | — |
