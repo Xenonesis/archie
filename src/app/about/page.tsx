@@ -182,6 +182,83 @@ export default function AboutPage() {
             <h2 className="text-xl md:text-2xl font-serif font-medium text-[var(--text-primary)] mb-6 md:mb-8 flex items-center gap-3">
               <span className="flex items-center justify-center w-8 h-8 rounded-lg bg-[var(--brand-subtle)] text-[var(--brand)] border border-[var(--brand-border)]">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M12 2l3.09 6.26L22 9.27l-5 4.87.18 6.26L12 17.77l-5.18 2.63L7 14.14 2 9.27l6.91-1.01L12 2z" />
+                </svg>
+              </span>
+              Key Features
+            </h2>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {[
+                { title: "Conversational Article Generation", desc: "Submit article requests through a chat-like interface and receive formatted articles instantly" },
+                { title: "Tone Selection", desc: "Choose from six writing tones — Professional, Friendly, Conversational, Persuasive, Academic, Creative" },
+                { title: "Chat History", desc: "Persistent chat sessions with rename/delete functionality and message history" },
+                { title: "Dark/Light Theme", desc: "Beautiful theme system with system preference detection and localStorage persistence" },
+                { title: "Real-Time Feedback", desc: "Thinking progression indicators showing analysis, curation, and synthesis phases" },
+                { title: "Responsive Design", desc: "Mobile-first layout with collapsible sidebar and adaptive breakpoints" },
+              ].map((feature) => (
+                <div key={feature.title} className="flex gap-3.5 p-4 rounded-xl bg-[var(--bg-surface)] border border-[var(--border-subtle)] shadow-[var(--shadow-sm)] hover:border-[var(--brand-border)] hover:shadow-[var(--shadow-md)] transition-all duration-200">
+                  <div className="shrink-0 mt-0.5 text-[var(--brand)]">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                      <polyline points="20 6 9 17 4 12" />
+                    </svg>
+                  </div>
+                  <div>
+                    <div className="text-[13.5px] font-semibold text-[var(--text-primary)] mb-0.5">{feature.title}</div>
+                    <div className="text-[12.5px] text-[var(--text-secondary)] leading-relaxed">{feature.desc}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </section>
+
+          <section className="mb-12 md:mb-16">
+            <h2 className="text-xl md:text-2xl font-serif font-medium text-[var(--text-primary)] mb-6 md:mb-8 flex items-center gap-3">
+              <span className="flex items-center justify-center w-8 h-8 rounded-lg bg-[var(--brand-subtle)] text-[var(--brand)] border border-[var(--brand-border)]">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <rect x="2" y="3" width="20" height="14" rx="2" ry="2" /><path d="M8 21h8" /><path d="M12 17v4" />
+                </svg>
+              </span>
+              Architecture Overview
+            </h2>
+
+            <div className="p-6 rounded-2xl bg-[var(--bg-surface)] border border-[var(--border-subtle)] shadow-[var(--shadow-sm)]">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <div className="text-center">
+                  <div className="flex items-center justify-center w-12 h-12 rounded-xl bg-[var(--brand-subtle)] text-[var(--brand)] border border-[var(--brand-border)] mb-3 mx-auto">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                      <rect x="2" y="3" width="20" height="14" rx="2" ry="2" /><path d="M8 21h8M12 17v4" />
+                    </svg>
+                  </div>
+                  <h3 className="text-[15px] font-semibold text-[var(--text-primary)] mb-2">Frontend</h3>
+                  <p className="text-[13px] text-[var(--text-secondary)] leading-relaxed">Next.js 16 + React 19 + TypeScript + Tailwind CSS 4 with chat interface and theme system</p>
+                </div>
+                <div className="text-center">
+                  <div className="flex items-center justify-center w-12 h-12 rounded-xl bg-[var(--brand-subtle)] text-[var(--brand)] border border-[var(--brand-border)] mb-3 mx-auto">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+                    </svg>
+                  </div>
+                  <h3 className="text-[15px] font-semibold text-[var(--text-primary)] mb-2">Backend Proxy</h3>
+                  <p className="text-[13px] text-[var(--text-secondary)] leading-relaxed">Next.js API routes with rate limiting, validation, and n8n webhook integration</p>
+                </div>
+                <div className="text-center">
+                  <div className="flex items-center justify-center w-12 h-12 rounded-xl bg-[var(--brand-subtle)] text-[var(--brand)] border border-[var(--brand-border)] mb-3 mx-auto">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z" />
+                    </svg>
+                  </div>
+                  <h3 className="text-[15px] font-semibold text-[var(--text-primary)] mb-2">AI Workflow</h3>
+                  <p className="text-[13px] text-[var(--text-secondary)] leading-relaxed">n8n orchestrates AI models (GPT-4, Claude, etc.) with system prompts and article generation</p>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <section className="mb-12 md:mb-16">
+            <h2 className="text-xl md:text-2xl font-serif font-medium text-[var(--text-primary)] mb-6 md:mb-8 flex items-center gap-3">
+              <span className="flex items-center justify-center w-8 h-8 rounded-lg bg-[var(--brand-subtle)] text-[var(--brand)] border border-[var(--brand-border)]">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                   <circle cx="12" cy="12" r="10" /><path d="M12 8v4l3 3" />
                 </svg>
               </span>
@@ -366,10 +443,12 @@ export default function AboutPage() {
 
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
               {[
-                { name: "Next.js 16", sub: "App Router · SSR" },
-                { name: "TypeScript", sub: "End-to-end safety" },
-                { name: "n8n", sub: "Workflow automation" },
-                { name: "Tailwind CSS", sub: "Utility-first styles" },
+                { name: "Next.js 16", sub: "App Router · SSR · API Routes" },
+                { name: "React 19", sub: "Client Components · Hooks" },
+                { name: "TypeScript 5.x", sub: "End-to-end type safety" },
+                { name: "Tailwind CSS 4", sub: "Utility-first · Design tokens" },
+                { name: "n8n", sub: "Workflow automation · AI integration" },
+                { name: "Node.js 20+", sub: "Server runtime · npm ecosystem" },
               ].map((tech) => (
                 <div key={tech.name} className="p-4 rounded-xl bg-[var(--bg-surface)] border border-[var(--border-subtle)] shadow-[var(--shadow-sm)] text-center hover:border-[var(--brand-border)] transition-colors">
                   <div className="text-[14px] font-semibold text-[var(--text-primary)] mb-0.5">{tech.name}</div>
