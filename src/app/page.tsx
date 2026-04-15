@@ -66,6 +66,23 @@ function toChatTitle(text: string) {
   return clean.length > 42 ? `${clean.slice(0, 42)}...` : clean;
 }
 
+function getChatPreview(chat: ChatSession) {
+  const latestUserMessage = [...chat.messages].reverse().find((m) => m.role === "user")?.text;
+  return latestUserMessage ?? (chat.messages.length ? "Generated response" : "No messages yet");
+}
+
+function formatHistoryTime(timestamp: number) {
+  const date = new Date(timestamp);
+  const now = new Date();
+  const isToday = date.toDateString() === now.toDateString();
+
+  if (isToday) {
+    return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  }
+
+  return date.toLocaleDateString([], { month: "short", day: "numeric" });
+}
+
 export default function Home() {
   const [inputValue, setInputValue] = useState("");
   const [tone, setTone] = useState<string>("Professional");
@@ -80,6 +97,8 @@ export default function Home() {
   const [theme, setTheme] = useState<"light" | "dark">("light");
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [openMenuIdx, setOpenMenuIdx] = useState<number | null>(null);
+  const [historySearch, setHistorySearch] = useState("");
+  const [openHistoryMenuId, setOpenHistoryMenuId] = useState<string | null>(null);
 
   const charCount = useMemo(() => inputValue.length, [inputValue]);
   const outputRef = useRef<HTMLDivElement>(null);
@@ -91,6 +110,14 @@ export default function Home() {
   );
   const messages = activeChat?.messages ?? [];
   const lastPrompt = activeChat?.lastPrompt ?? null;
+  const filteredChatSessions = useMemo(() => {
+    const query = historySearch.trim().toLowerCase();
+    if (!query) return chatSessions;
+    return chatSessions.filter((chat) => {
+      const preview = getChatPreview(chat);
+      return `${chat.title} ${preview}`.toLowerCase().includes(query);
+    });
+  }, [chatSessions, historySearch]);
 
   const patchChatById = (chatId: string, updater: (chat: ChatSession) => ChatSession) => {
     setChatSessions((prev) => {
@@ -114,6 +141,12 @@ export default function Home() {
       messages: [...chat.messages, message],
       updatedAt: Date.now(),
     }));
+  };
+
+  const closeSidebarIfMobile = () => {
+    if (typeof window !== "undefined" && window.matchMedia("(max-width: 767px)").matches) {
+      setSidebarOpen(false);
+    }
   };
 
   useEffect(() => {
@@ -159,17 +192,24 @@ export default function Home() {
 
   useEffect(() => {
     const closeOnOutsideClick = (event: MouseEvent) => {
-      if (openMenuIdx === null) return;
       const target = event.target as HTMLElement | null;
-      if (!target?.closest(`[data-menu-idx=\"${openMenuIdx}\"]`)) {
+
+      if (openMenuIdx !== null && !target?.closest(`[data-menu-idx=\"${openMenuIdx}\"]`)) {
         setOpenMenuIdx(null);
+      }
+
+      if (openHistoryMenuId !== null && !target?.closest(`[data-history-menu-id=\"${openHistoryMenuId}\"]`)) {
+        setOpenHistoryMenuId(null);
       }
     };
 
     const closeOnEscape = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         setOpenMenuIdx(null);
-        setSidebarOpen(false);
+        setOpenHistoryMenuId(null);
+        if (window.matchMedia("(max-width: 767px)").matches) {
+          setSidebarOpen(false);
+        }
       }
     };
 
@@ -179,7 +219,7 @@ export default function Home() {
       window.removeEventListener("mousedown", closeOnOutsideClick);
       window.removeEventListener("keydown", closeOnEscape);
     };
-  }, [openMenuIdx]);
+  }, [openMenuIdx, openHistoryMenuId]);
 
   const toggleTheme = () => {
     const newTheme = theme === "light" ? "dark" : "light";
@@ -272,8 +312,49 @@ export default function Home() {
     setError(null);
     setFeedbackIdx({});
     setOpenMenuIdx(null);
+    setOpenHistoryMenuId(null);
     if (textareaRef.current) textareaRef.current.style.height = "auto";
-    setSidebarOpen(false);
+    closeSidebarIfMobile();
+  };
+
+  const handleRenameChat = (chatId: string) => {
+    const existing = chatSessions.find((chat) => chat.id === chatId);
+    if (!existing) return;
+
+    const nextTitle = window.prompt("Rename chat", existing.title);
+    const cleanTitle = nextTitle?.trim();
+    if (!cleanTitle) return;
+
+    patchChatById(chatId, (chat) => ({
+      ...chat,
+      title: toChatTitle(cleanTitle),
+      updatedAt: Date.now(),
+    }));
+    setOpenHistoryMenuId(null);
+  };
+
+  const handleDeleteChat = (chatId: string) => {
+    const existing = chatSessions.find((chat) => chat.id === chatId);
+    if (!existing) return;
+
+    const confirmed = window.confirm(`Delete chat \"${existing.title}\"? This cannot be undone.`);
+    if (!confirmed) return;
+
+    setChatSessions((prev) => {
+      const remaining = prev.filter((chat) => chat.id !== chatId);
+      if (remaining.length === 0) {
+        const fallback = createChatSession();
+        setActiveChatId(fallback.id);
+        return [fallback];
+      }
+      if (activeChatId === chatId) {
+        setActiveChatId(remaining[0].id);
+      }
+      return remaining;
+    });
+
+    setOpenHistoryMenuId(null);
+    setError(null);
   };
 
   const handleSubmit = async (event: FormEvent | React.KeyboardEvent) => {
@@ -381,45 +462,111 @@ export default function Home() {
           <div className="flex-1 overflow-y-auto px-3 py-2 no-scrollbar">
             <div className="text-[11px] font-bold text-[var(--text-placeholder)] mb-3 px-2 uppercase tracking-wider select-none">Chat History</div>
 
+            <div className="mb-3 px-1">
+              <div className="relative">
+                <input
+                  type="text"
+                  value={historySearch}
+                  onChange={(e) => setHistorySearch(e.target.value)}
+                  placeholder="Search chats"
+                  className="w-full rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-surface)] px-3 py-2 text-[12.5px] text-[var(--text-primary)] placeholder:text-[var(--text-placeholder)] outline-none focus:border-[var(--brand)]"
+                />
+                {historySearch && (
+                  <button
+                    onClick={() => setHistorySearch("")}
+                    aria-label="Clear search"
+                    className="absolute right-1.5 top-1/2 -translate-y-1/2 p-1 text-[var(--text-tertiary)] hover:text-[var(--text-primary)]"
+                  >
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6 6 18M6 6l12 12" /></svg>
+                  </button>
+                )}
+              </div>
+            </div>
+
             <div className="space-y-0.5">
-              {chatSessions.map((chat) => {
+              {filteredChatSessions.length === 0 && (
+                <div className="px-3 py-2 text-[12px] text-[var(--text-tertiary)]">No chats found.</div>
+              )}
+
+              {filteredChatSessions.map((chat) => {
                 const isActive = chat.id === activeChat?.id;
-                const latestUserMessage = [...chat.messages].reverse().find((m) => m.role === "user")?.text;
-                const preview = latestUserMessage ?? (chat.messages.length ? "Generated response" : "No messages yet");
+                const preview = getChatPreview(chat);
 
                 return (
-                  <button
-                    key={chat.id}
-                    onClick={() => {
-                      setActiveChatId(chat.id);
-                      setError(null);
-                      setOpenMenuIdx(null);
-                      setSidebarOpen(false);
-                    }}
-                    className={`w-full flex items-start gap-3 px-3 py-2.5 rounded-xl text-left transition-colors group border ${
-                      isActive
-                        ? "bg-[var(--bg-surface)] border-[var(--brand-border)] text-[var(--text-primary)] shadow-sm"
-                        : "border-transparent text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
-                    }`}
-                  >
-                    <svg
-                      width="16"
-                      height="16"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      className={`mt-[2px] shrink-0 ${isActive ? "text-[var(--brand)]" : "text-[var(--text-placeholder)] group-hover:text-[var(--text-secondary)]"}`}
+                  <div key={chat.id} className="relative" data-history-menu-id={chat.id}>
+                    <button
+                      onClick={() => {
+                        setActiveChatId(chat.id);
+                        setError(null);
+                        setOpenMenuIdx(null);
+                        setOpenHistoryMenuId(null);
+                        closeSidebarIfMobile();
+                      }}
+                      className={`w-full flex items-start gap-3 px-3 py-2.5 pr-10 rounded-xl text-left transition-colors group border ${
+                        isActive
+                          ? "bg-[var(--bg-surface)] border-[var(--brand-border)] text-[var(--text-primary)] shadow-sm"
+                          : "border-transparent text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
+                      }`}
                     >
-                      <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
-                    </svg>
-                    <div className="min-w-0 flex-1">
-                      <div className="truncate text-[13.5px] font-medium relative top-[0.5px]">{chat.title}</div>
-                      <div className="truncate mt-0.5 text-[12px] text-[var(--text-tertiary)]">{preview}</div>
+                      <svg
+                        width="16"
+                        height="16"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        className={`mt-[2px] shrink-0 ${isActive ? "text-[var(--brand)]" : "text-[var(--text-placeholder)] group-hover:text-[var(--text-secondary)]"}`}
+                      >
+                        <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+                      </svg>
+                      <div className="min-w-0 flex-1">
+                        <div className="truncate text-[13.5px] font-medium relative top-[0.5px]">{chat.title}</div>
+                        <div className="mt-0.5 flex items-center justify-between gap-2">
+                          <div className="truncate text-[12px] text-[var(--text-tertiary)]">{preview}</div>
+                          <div className="shrink-0 text-[11px] text-[var(--text-placeholder)]">{formatHistoryTime(chat.updatedAt)}</div>
+                        </div>
+                      </div>
+                    </button>
+
+                    <div className="absolute right-2 top-2">
+                      <button
+                        onClick={(event) => {
+                          event.preventDefault();
+                          event.stopPropagation();
+                          setOpenHistoryMenuId(openHistoryMenuId === chat.id ? null : chat.id);
+                        }}
+                        aria-label={`More actions for ${chat.title}`}
+                        className={`p-1 rounded-md transition-colors ${
+                          openHistoryMenuId === chat.id
+                            ? "bg-[var(--bg-surface)] text-[var(--text-primary)]"
+                            : "text-[var(--text-placeholder)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)]"
+                        }`}
+                      >
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="1.5" /><circle cx="19" cy="12" r="1.5" /><circle cx="5" cy="12" r="1.5" /></svg>
+                      </button>
+
+                      {openHistoryMenuId === chat.id && (
+                        <div className="absolute right-0 mt-1 w-36 overflow-hidden rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-surface)] shadow-[var(--shadow-md)] z-20">
+                          <button
+                            onClick={() => handleRenameChat(chat.id)}
+                            className="flex w-full items-center gap-2 px-3 py-2 text-left text-[12.5px] text-[var(--text-primary)] hover:bg-[var(--bg-hover)]"
+                          >
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 20h9" /><path d="M16.5 3.5a2.12 2.12 0 1 1 3 3L7 19l-4 1 1-4Z" /></svg>
+                            Rename
+                          </button>
+                          <button
+                            onClick={() => handleDeleteChat(chat.id)}
+                            className="flex w-full items-center gap-2 px-3 py-2 text-left text-[12.5px] text-[var(--error-text)] hover:bg-[var(--error-bg)]"
+                          >
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 6h18" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" /><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /></svg>
+                            Delete
+                          </button>
+                        </div>
+                      )}
                     </div>
-                  </button>
+                  </div>
                 );
               })}
             </div>
