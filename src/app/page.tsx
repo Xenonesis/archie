@@ -4,6 +4,14 @@ import { FormEvent, useMemo, useRef, useEffect, useState } from "react";
 import Link from "next/link";
 
 type ChatMessage = { role: "user" | "assistant" | "system"; text: string; commentary?: string };
+type PromptPayload = { prompt: string; topic: string; tone: string };
+type ChatSession = {
+  id: string;
+  title: string;
+  messages: ChatMessage[];
+  lastPrompt: PromptPayload | null;
+  updatedAt: number;
+};
 
 type ResponseFromApi = {
   article?: string;
@@ -35,20 +43,34 @@ function mapApiError(status: number, payload: ResponseFromApi): string {
   return payload.error ?? "Unexpected error while generating article.";
 }
 
-const ROLE_META = {
-  assistant: { label: "AI", color: "#c96442" },
-  user: { label: "You", color: "var(--text-secondary)" },
-  system: { label: "System", color: "var(--text-tertiary)" },
-} as const;
-
 const TONES = ["Professional", "Friendly", "Conversational", "Persuasive", "Academic", "Creative"] as const;
+const CHAT_STORAGE_KEY = "article-forge-chat-sessions-v1";
 
-void ROLE_META;
+function makeChatId() {
+  return `chat-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function createChatSession(seedTitle?: string): ChatSession {
+  return {
+    id: makeChatId(),
+    title: seedTitle ?? "New Chat",
+    messages: [],
+    lastPrompt: null,
+    updatedAt: Date.now(),
+  };
+}
+
+function toChatTitle(text: string) {
+  const clean = text.trim().replace(/\s+/g, " ");
+  if (!clean) return "New Chat";
+  return clean.length > 42 ? `${clean.slice(0, 42)}...` : clean;
+}
 
 export default function Home() {
   const [inputValue, setInputValue] = useState("");
   const [tone, setTone] = useState<string>("Professional");
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [chatSessions, setChatSessions] = useState<ChatSession[]>(() => [createChatSession()]);
+  const [activeChatId, setActiveChatId] = useState<string>(() => "");
   const [loading, setLoading] = useState(false);
   const [thinkingState, setThinkingState] = useState(0);
   const [error, setError] = useState<string | null>(null);
@@ -63,7 +85,36 @@ export default function Home() {
   const outputRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  const [lastPrompt, setLastPrompt] = useState<{ prompt: string; topic: string; tone: string } | null>(null);
+  const activeChat = useMemo(
+    () => chatSessions.find((chat) => chat.id === activeChatId) ?? chatSessions[0],
+    [chatSessions, activeChatId],
+  );
+  const messages = activeChat?.messages ?? [];
+  const lastPrompt = activeChat?.lastPrompt ?? null;
+
+  const patchChatById = (chatId: string, updater: (chat: ChatSession) => ChatSession) => {
+    setChatSessions((prev) => {
+      let updated: ChatSession | null = null;
+      const rest: ChatSession[] = [];
+      for (const chat of prev) {
+        if (chat.id === chatId) {
+          updated = updater(chat);
+        } else {
+          rest.push(chat);
+        }
+      }
+      if (!updated) return prev;
+      return [updated, ...rest];
+    });
+  };
+
+  const appendMessageToChat = (chatId: string, message: ChatMessage) => {
+    patchChatById(chatId, (chat) => ({
+      ...chat,
+      messages: [...chat.messages, message],
+      updatedAt: Date.now(),
+    }));
+  };
 
   useEffect(() => {
     const savedTheme = localStorage.getItem("theme");
@@ -72,6 +123,63 @@ export default function Home() {
       document.documentElement.setAttribute("data-theme", "dark");
     }
   }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (window.matchMedia("(min-width: 768px)").matches) {
+      setSidebarOpen(true);
+    }
+  }, []);
+
+  useEffect(() => {
+    const raw = localStorage.getItem(CHAT_STORAGE_KEY);
+    if (!raw) {
+      if (chatSessions.length > 0 && !activeChatId) setActiveChatId(chatSessions[0].id);
+      return;
+    }
+    try {
+      const parsed = JSON.parse(raw) as { chats: ChatSession[]; activeChatId: string };
+      if (Array.isArray(parsed.chats) && parsed.chats.length > 0) {
+        setChatSessions(parsed.chats);
+        setActiveChatId(parsed.activeChatId || parsed.chats[0].id);
+      }
+    } catch {
+      const fallback = createChatSession();
+      setChatSessions([fallback]);
+      setActiveChatId(fallback.id);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!chatSessions.length) return;
+    const nextActive = activeChatId || chatSessions[0].id;
+    if (!activeChatId) setActiveChatId(nextActive);
+    localStorage.setItem(CHAT_STORAGE_KEY, JSON.stringify({ chats: chatSessions, activeChatId: nextActive }));
+  }, [chatSessions, activeChatId]);
+
+  useEffect(() => {
+    const closeOnOutsideClick = (event: MouseEvent) => {
+      if (openMenuIdx === null) return;
+      const target = event.target as HTMLElement | null;
+      if (!target?.closest(`[data-menu-idx=\"${openMenuIdx}\"]`)) {
+        setOpenMenuIdx(null);
+      }
+    };
+
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setOpenMenuIdx(null);
+        setSidebarOpen(false);
+      }
+    };
+
+    window.addEventListener("mousedown", closeOnOutsideClick);
+    window.addEventListener("keydown", closeOnEscape);
+    return () => {
+      window.removeEventListener("mousedown", closeOnOutsideClick);
+      window.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [openMenuIdx]);
 
   const toggleTheme = () => {
     const newTheme = theme === "light" ? "dark" : "light";
@@ -113,7 +221,7 @@ export default function Home() {
     }
   };
 
-  const callApi = async (promptPayload: { prompt: string; topic: string; tone: string }) => {
+  const callApi = async (promptPayload: PromptPayload, targetChatId: string) => {
     setLoading(true);
     setError(null);
     try {
@@ -135,25 +243,37 @@ export default function Home() {
       }
 
       if (!response.ok || data.error) {
-        setMessages((prev) => [...prev, { role: "system", text: `Error: ${mapApiError(response.status, data)}` }]);
+        appendMessageToChat(targetChatId, { role: "system", text: `Error: ${mapApiError(response.status, data)}` });
         return;
       }
       if (!data.article?.trim()) {
-        setMessages((prev) => [...prev, { role: "system", text: "Generator returned empty content. Please retry." }]);
+        appendMessageToChat(targetChatId, { role: "system", text: "Generator returned empty content. Please retry." });
         return;
       }
 
-      setMessages((prev) => [...prev, { role: "assistant", text: data.article as string, commentary: data.commentary }]);
+      appendMessageToChat(targetChatId, { role: "assistant", text: data.article as string, commentary: data.commentary });
 
       if (data.rateLimit?.remaining !== undefined && data.rateLimit.remaining <= 1) {
-        setMessages((prev) => [...prev, { role: "system", text: "Approaching rate limit. Slow down to avoid throttling." }]);
+        appendMessageToChat(targetChatId, { role: "system", text: "Approaching rate limit. Slow down to avoid throttling." });
       }
     } catch (err) {
       console.error(err);
-      setMessages((prev) => [...prev, { role: "system", text: "Network error: unable to reach article generator." }]);
+      appendMessageToChat(targetChatId, { role: "system", text: "Network error: unable to reach article generator." });
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleNewChat = () => {
+    const next = createChatSession();
+    setChatSessions((prev) => [next, ...prev]);
+    setActiveChatId(next.id);
+    setInputValue("");
+    setError(null);
+    setFeedbackIdx({});
+    setOpenMenuIdx(null);
+    if (textareaRef.current) textareaRef.current.style.height = "auto";
+    setSidebarOpen(false);
   };
 
   const handleSubmit = async (event: FormEvent | React.KeyboardEvent) => {
@@ -174,20 +294,31 @@ export default function Home() {
     const cleanTopic = isShort ? cleanInput : "";
     const cleanPrompt = isShort ? "" : cleanInput;
 
-    const payload = { prompt: cleanPrompt, topic: cleanTopic, tone: cleanTone };
-    setLastPrompt(payload);
+    if (!activeChat) return;
 
-    setMessages((prev) => [...prev, { role: "user", text: cleanInput }]);
+    const payload = { prompt: cleanPrompt, topic: cleanTopic, tone: cleanTone };
+    patchChatById(activeChat.id, (chat) => ({
+      ...chat,
+      title: chat.messages.length === 0 ? toChatTitle(cleanInput) : chat.title,
+      lastPrompt: payload,
+      messages: [...chat.messages, { role: "user", text: cleanInput }],
+      updatedAt: Date.now(),
+    }));
+
     setInputValue("");
     if (textareaRef.current) textareaRef.current.style.height = "auto";
 
-    await callApi(payload);
+    await callApi(payload, activeChat.id);
   };
 
   const handleRegenerate = async (assistantIdx: number) => {
-    if (loading || !lastPrompt) return;
-    setMessages((prev) => prev.slice(0, assistantIdx));
-    await callApi(lastPrompt);
+    if (loading || !lastPrompt || !activeChat) return;
+    patchChatById(activeChat.id, (chat) => ({
+      ...chat,
+      messages: chat.messages.slice(0, assistantIdx),
+      updatedAt: Date.now(),
+    }));
+    await callApi(lastPrompt, activeChat.id);
   };
 
   const handleCopy = async (text: string, idx: number) => {
@@ -212,12 +343,13 @@ export default function Home() {
   };
 
   return (
-    <div className="flex h-screen w-full bg-[var(--bg-base)] text-[var(--text-primary)] overflow-hidden font-sans transition-colors duration-200">
+    <div className="flex min-h-dvh w-full bg-[var(--bg-base)] text-[var(--text-primary)] overflow-hidden font-sans transition-colors duration-200">
       <aside
-        className={`${sidebarOpen ? "w-[260px] translate-x-0" : "w-0 -translate-x-full md:w-0 md:translate-x-0 hidden md:flex"}
-        ${sidebarOpen ? "absolute" : "hidden"} md:relative z-50 h-screen transition-all duration-300 ease-in-out shrink-0 overflow-hidden bg-[var(--bg-elevated)] border-r border-[var(--border-subtle)] flex-col shadow-[var(--shadow-sm)]`}
+        className={`fixed inset-y-0 left-0 z-50 w-[280px] transform border-r border-[var(--border-subtle)] bg-[var(--bg-elevated)] shadow-[var(--shadow-sm)] transition-all duration-300 ease-in-out ${
+          sidebarOpen ? "translate-x-0 md:w-[280px]" : "-translate-x-full md:translate-x-0 md:w-0"
+        } md:static md:inset-auto md:overflow-hidden shrink-0`}
       >
-        <div className="flex flex-col h-full bg-[var(--bg-elevated)] w-[260px] shrink-0">
+        <div className="flex h-full flex-col bg-[var(--bg-elevated)] w-[280px] shrink-0">
           <div className="px-5 py-4 flex items-center justify-between border-b border-[var(--border-subtle)] shrink-0">
             <div className="flex items-center gap-3">
               <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-[var(--brand)] text-[#fff] font-serif italic font-bold shadow-sm transform transition-transform hover:scale-105 select-none">
@@ -228,6 +360,7 @@ export default function Home() {
 
             <button
               onClick={() => setSidebarOpen(false)}
+              aria-label="Close sidebar"
               title="Close sidebar"
               className="p-1.5 -mr-1.5 hover:bg-[var(--bg-hover)] rounded-md transition-colors text-[var(--text-tertiary)] hover:text-[var(--text-primary)]"
             >
@@ -237,7 +370,7 @@ export default function Home() {
 
           <div className="p-3 shrink-0">
             <button
-              onClick={() => { setMessages([]); setError(null); setLastPrompt(null); setFeedbackIdx({}); }}
+              onClick={handleNewChat}
               className="flex items-center gap-3 px-3 py-2.5 bg-[var(--bg-surface)] hover:bg-[var(--bg-base)] border border-[var(--border-default)] hover:border-[var(--brand)] rounded-xl w-full text-left transition-all group shadow-sm"
             >
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-[var(--brand)]"><path d="M12 5v14" /><path d="M5 12h14" /></svg>
@@ -246,26 +379,49 @@ export default function Home() {
           </div>
 
           <div className="flex-1 overflow-y-auto px-3 py-2 no-scrollbar">
-            <div className="text-[11px] font-bold text-[var(--text-placeholder)] mb-3 px-2 uppercase tracking-wider select-none">Recent Workspace</div>
+            <div className="text-[11px] font-bold text-[var(--text-placeholder)] mb-3 px-2 uppercase tracking-wider select-none">Chat History</div>
 
             <div className="space-y-0.5">
-              <button className="w-full flex items-center gap-3 px-3 py-2.5 hover:bg-[var(--bg-hover)] rounded-xl text-[13.5px] text-[var(--text-secondary)] transition-colors group">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 text-[var(--text-placeholder)] group-hover:text-[var(--text-secondary)] transition-colors"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z" /><polyline points="14 2 14 8 20 8" /></svg>
-                <span className="truncate text-left relative top-[0.5px]">Understanding Edge Computing</span>
-              </button>
+              {chatSessions.map((chat) => {
+                const isActive = chat.id === activeChat?.id;
+                const latestUserMessage = [...chat.messages].reverse().find((m) => m.role === "user")?.text;
+                const preview = latestUserMessage ?? (chat.messages.length ? "Generated response" : "No messages yet");
 
-              <button className="w-full flex items-center gap-3 px-3 py-2.5 hover:bg-[var(--bg-hover)] rounded-xl text-[13.5px] text-[var(--text-secondary)] transition-colors group">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 text-[var(--text-placeholder)] group-hover:text-[var(--text-secondary)] transition-colors"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z" /><polyline points="14 2 14 8 20 8" /></svg>
-                <span className="truncate text-left relative top-[0.5px]">AR Experiences in 2026</span>
-              </button>
-
-              {messages.length > 0 && messages[messages.length - 1].role === "user" && (
-                <button className="w-full flex items-center gap-3 px-3 py-2.5 bg-[var(--bg-surface)] hover:bg-[var(--bg-surface)] border border-[var(--border-subtle)] text-[var(--text-primary)] rounded-xl text-[13.5px] font-medium transition-colors shadow-sm mt-3 relative">
-                  <span className="absolute left-0 w-1 h-5 bg-[var(--brand)] rounded-r-full -ml-[1px]" />
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 text-[var(--brand)] ml-1"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" /></svg>
-                  <span className="truncate text-left relative top-[0.5px]">Current Draft</span>
-                </button>
-              )}
+                return (
+                  <button
+                    key={chat.id}
+                    onClick={() => {
+                      setActiveChatId(chat.id);
+                      setError(null);
+                      setOpenMenuIdx(null);
+                      setSidebarOpen(false);
+                    }}
+                    className={`w-full flex items-start gap-3 px-3 py-2.5 rounded-xl text-left transition-colors group border ${
+                      isActive
+                        ? "bg-[var(--bg-surface)] border-[var(--brand-border)] text-[var(--text-primary)] shadow-sm"
+                        : "border-transparent text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
+                    }`}
+                  >
+                    <svg
+                      width="16"
+                      height="16"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      className={`mt-[2px] shrink-0 ${isActive ? "text-[var(--brand)]" : "text-[var(--text-placeholder)] group-hover:text-[var(--text-secondary)]"}`}
+                    >
+                      <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+                    </svg>
+                    <div className="min-w-0 flex-1">
+                      <div className="truncate text-[13.5px] font-medium relative top-[0.5px]">{chat.title}</div>
+                      <div className="truncate mt-0.5 text-[12px] text-[var(--text-tertiary)]">{preview}</div>
+                    </div>
+                  </button>
+                );
+              })}
             </div>
           </div>
 
@@ -304,7 +460,7 @@ export default function Home() {
         </div>
       </aside>
 
-      <main className="flex-1 flex flex-col h-screen relative overflow-hidden transition-all duration-300 bg-[var(--bg-base)]">
+      <main className="flex-1 flex min-h-dvh flex-col relative overflow-hidden bg-[var(--bg-base)]">
         {sidebarOpen && (
           <div
             className="absolute inset-0 z-40 bg-black/40 md:hidden transition-opacity"
@@ -315,13 +471,14 @@ export default function Home() {
         <header className="flex items-center gap-3 px-4 py-3 shrink-0 select-none border-b border-transparent">
           <button
             onClick={() => setSidebarOpen(!sidebarOpen)}
+            aria-label={sidebarOpen ? "Close sidebar" : "Open sidebar"}
             title={sidebarOpen ? "Close sidebar" : "Open sidebar"}
             className="p-1.5 hover:bg-[var(--bg-hover)] rounded-md transition-colors text-[var(--text-tertiary)] hover:text-[var(--text-primary)]"
           >
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="18" height="18" x="3" y="3" rx="2" ry="2" /><path d="M9 3v18" /></svg>
           </button>
 
-          <div className={`flex items-center gap-2 cursor-pointer transition-opacity ${sidebarOpen ? "md:opacity-0 md:pointer-events-none" : "opacity-100"}`}>
+          <div className="flex items-center gap-2 cursor-pointer transition-opacity">
             <div className="flex items-center justify-center w-6 h-6 rounded-md bg-[var(--brand)] text-[#fff] font-serif italic font-bold shadow-sm">
               A
             </div>
@@ -339,7 +496,7 @@ export default function Home() {
           </div>
         </header>
 
-        <div className="flex-1 overflow-y-auto px-4 pb-48">
+        <div className="flex-1 overflow-y-auto px-4 pb-8">
           <div ref={outputRef} className="max-w-3xl mx-auto flex flex-col gap-6 pt-4 pb-10">
             {messages.length === 0 && (
               <div className="flex flex-col items-center justify-center mt-20 gap-4 text-center">
@@ -368,7 +525,7 @@ export default function Home() {
                     </div>
                   )}
 
-                  <div className={`flex flex-col flex-1 max-w-[85%] ${isUser ? "bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-[var(--text-primary)] px-4 py-3 rounded-2xl shadow-sm" : "w-full"}`}>
+                  <div className={`flex flex-col flex-1 ${isUser ? "max-w-[92%] md:max-w-[82%] bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-[var(--text-primary)] px-4 py-3 rounded-2xl shadow-sm" : "w-full"}`}>
                     
                     {isSystem ? (
                       <div className="prose prose-sm md:prose-base leading-relaxed break-words whitespace-pre-wrap max-w-none text-[var(--error-text)]">
@@ -435,6 +592,7 @@ export default function Home() {
                         <button
                           id={`copy-btn-${idx}`}
                           title={copiedIdx === idx ? "Copied!" : "Copy"}
+                          aria-label={copiedIdx === idx ? "Copied" : "Copy article"}
                           className={`flex items-center justify-center p-1.5 rounded-md transition-colors ${copiedIdx === idx ? "text-[var(--brand)]" : "hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)]"}`}
                           onClick={() => handleCopy(msg.text, idx)}
                         >
@@ -448,6 +606,7 @@ export default function Home() {
                         <button
                           id={`thumbs-up-btn-${idx}`}
                           title="Good response"
+                          aria-label="Mark response as good"
                           onClick={() => handleFeedback(idx, "up")}
                           className={`flex items-center justify-center p-1.5 rounded-md transition-colors ${feedbackIdx[idx] === "up" ? "text-[var(--brand)] bg-[var(--brand-subtle)]" : "hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)]"}`}
                         >
@@ -457,6 +616,7 @@ export default function Home() {
                         <button
                           id={`thumbs-down-btn-${idx}`}
                           title="Bad response"
+                          aria-label="Mark response as bad"
                           onClick={() => handleFeedback(idx, "down")}
                           className={`flex items-center justify-center p-1.5 rounded-md transition-colors ${feedbackIdx[idx] === "down" ? "text-[var(--error-text)] bg-[var(--error-bg)]" : "hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)]"}`}
                         >
@@ -466,6 +626,7 @@ export default function Home() {
                         <button
                           id={`share-btn-${idx}`}
                           title="Share"
+                          aria-label="Share article"
                           onClick={() => {
                             if (navigator.share) {
                               navigator.share({ text: msg.text }).catch(() => {});
@@ -481,6 +642,7 @@ export default function Home() {
                         <button
                           id={`regenerate-btn-${idx}`}
                           title="Regenerate"
+                          aria-label="Regenerate article"
                           onClick={() => handleRegenerate(idx)}
                           disabled={loading}
                           className="flex items-center justify-center p-1.5 rounded-md hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
@@ -488,12 +650,12 @@ export default function Home() {
                           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" /><path d="M3 3v5h5" /></svg>
                         </button>
 
-                        <div className="relative">
+                        <div className="relative" data-menu-idx={idx}>
                           <button
                             id={`more-btn-${idx}`}
                             title="More actions"
+                            aria-label="Open more actions"
                             onClick={() => setOpenMenuIdx(openMenuIdx === idx ? null : idx)}
-                            onBlur={() => setTimeout(() => setOpenMenuIdx(null), 200)}
                             className={`flex items-center justify-center p-1.5 rounded-md transition-colors ${openMenuIdx === idx ? "bg-[var(--bg-elevated)] text-[var(--text-primary)]" : "hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)]"}`}
                           >
                             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="1.5" /><circle cx="19" cy="12" r="1.5" /><circle cx="5" cy="12" r="1.5" /></svg>
@@ -523,7 +685,7 @@ export default function Home() {
                 <div className="flex items-center justify-center w-8 h-8 rounded shrink-0 bg-[var(--brand-subtle)] border border-[var(--brand-border)] text-[var(--brand)] shadow-sm">
                   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="animate-spin duration-3000"><path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z" /></svg>
                 </div>
-                <div className="flex flex-col w-full max-w-[85%]">
+                <div className="flex flex-col w-full max-w-[92%] md:max-w-[82%]">
                   <details open className="group mt-1 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-elevated)] overflow-hidden w-fit shadow-sm">
                     <summary className="cursor-pointer list-none flex items-center gap-3 px-4 py-2.5 text-sm font-medium text-[var(--text-secondary)] select-none hover:bg-[var(--bg-hover)] transition-colors">
                       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="group-open:rotate-90 transition-transform text-[var(--text-tertiary)]"><path d="m9 18 6-6-6-6" /></svg>
@@ -541,8 +703,8 @@ export default function Home() {
           </div>
         </div>
 
-        <div className="fixed bottom-0 left-0 right-0 md:absolute p-4 pb-6 bg-gradient-to-t from-[var(--bg-base)] via-[var(--bg-base)] to-transparent pointer-events-none z-10">
-          <div className="max-w-3xl mx-auto flex flex-col items-center pointer-events-auto">
+        <div className="shrink-0 border-t border-[var(--border-subtle)] bg-[var(--bg-base)]/95 supports-[backdrop-filter]:bg-[var(--bg-base)]/80 backdrop-blur">
+          <div className="max-w-3xl mx-auto flex flex-col items-center px-4 py-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
             {error && (
               <div className="mb-3 px-4 py-2 rounded-lg bg-[var(--error-bg)] border border-[var(--error-border)] text-[var(--error-text)] text-sm font-medium flex items-center gap-2 shadow-sm animate-in zoom-in-95">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10" /><path d="m15 9-6 6" /><path d="m9 9 6 6" /></svg>
@@ -560,7 +722,7 @@ export default function Home() {
                 onChange={handleInput}
                 onKeyDown={handleKeyDown}
                 placeholder="Ask me to write an article..."
-                className="w-full max-h-[40vh] p-4 pb-3 bg-transparent resize-none outline-none text-[var(--text-primary)] placeholder:text-[var(--text-placeholder)] text-[15px] leading-relaxed"
+                className="w-full max-h-[34vh] md:max-h-[40vh] p-4 pb-3 bg-transparent resize-none outline-none text-[var(--text-primary)] placeholder:text-[var(--text-placeholder)] text-[15px] leading-relaxed"
                 rows={1}
               />
 
@@ -585,6 +747,7 @@ export default function Home() {
 
                 <button
                   id="send-btn"
+                  aria-label="Send prompt"
                   onClick={(e) => handleSubmit(e)}
                   disabled={loading || !inputValue.trim()}
                   className="flex items-center justify-center p-2 rounded-xl bg-[var(--brand)] hover:bg-[var(--brand-hover)] text-[#fff] disabled:bg-[var(--bg-elevated)] disabled:text-[var(--text-placeholder)] disabled:cursor-not-allowed transition-all shadow-sm"

@@ -1,11 +1,12 @@
 # Plan
 
-- [x] Enable n8n MCP tools and fetch workflow details for zuE2y9JkwZZMnlHY
-- [x] Apply exact node edits (Write Article topic resolver, Set Word Count raw JSON, Respond Success responseBody)
-- [x] Publish/activate workflow
-- [x] Re-test local /api/generate-article call and verify non-empty article body
+- [ ] Audit repo for dev-only artifacts to remove (build outputs, local env, editor settings).
+- [ ] Apply minimal production hardening (Next.js config + env hygiene) without changing behavior.
+- [ ] Remove confirmed non-required files/directories.
+- [ ] Verify lint/build or smoke checks if applicable.
+- [ ] Commit and push to GitHub.
 
 # Review
 
-- [x] Confirm n8n workflow returns non-empty article body
-- [x] Confirm local API returns article text (no empty 200)
+- [ ] Confirm app still runs locally and /api/generate-article returns article text.
+- [ ] Confirm repo contains only required files (no build artifacts or local env files).

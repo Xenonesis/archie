@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import Image from "next/image";
 
 type GitHubRepo = {
   stargazers_count: number;
@@ -11,22 +12,20 @@ type GitHubRepo = {
 };
 
 export default function AboutPage() {
-  const [theme, setTheme] = useState<"light" | "dark">("light");
+  const [theme, setTheme] = useState<"light" | "dark">(() => {
+    if (typeof window === "undefined") return "light";
+    const savedTheme = localStorage.getItem("theme");
+    if (savedTheme === "dark") return "dark";
+    if (!savedTheme && window.matchMedia("(prefers-color-scheme: dark)").matches) return "dark";
+    return "light";
+  });
   const [repo, setRepo] = useState<GitHubRepo | null>(null);
   const [repoLoading, setRepoLoading] = useState(true);
   const [repoError, setRepoError] = useState(false);
 
   useEffect(() => {
-    const savedTheme = localStorage.getItem("theme");
-    if (
-      savedTheme === "dark" ||
-      (!savedTheme &&
-        window.matchMedia("(prefers-color-scheme: dark)").matches)
-    ) {
-      setTheme("dark");
-      document.documentElement.setAttribute("data-theme", "dark");
-    }
-  }, []);
+    document.documentElement.setAttribute("data-theme", theme);
+  }, [theme]);
 
   const toggleTheme = () => {
     const newTheme = theme === "light" ? "dark" : "light";
@@ -120,34 +119,35 @@ export default function AboutPage() {
   ];
 
   return (
-    <div className="flex h-screen w-full bg-[var(--bg-base)] text-[var(--text-primary)] overflow-hidden font-sans transition-colors duration-200">
-      <main className="flex-1 flex flex-col h-screen overflow-y-auto">
-        <header className="flex items-center justify-between gap-3 px-6 py-4 shrink-0 border-b border-[var(--border-subtle)] bg-[var(--bg-surface)] sticky top-0 z-10 shadow-[var(--shadow-sm)]">
-          <div className="flex items-center gap-4">
+    <div className="flex min-h-dvh w-full bg-[var(--bg-base)] text-[var(--text-primary)] overflow-hidden font-sans transition-colors duration-200">
+      <main className="flex-1 flex min-h-dvh flex-col overflow-y-auto">
+        <header className="flex items-center justify-between gap-3 px-4 md:px-6 py-3 md:py-4 shrink-0 border-b border-[var(--border-subtle)] bg-[var(--bg-surface)] sticky top-0 z-10 shadow-[var(--shadow-sm)]">
+          <div className="flex min-w-0 items-center gap-3 md:gap-4">
             <Link
               href="/"
-              className="flex items-center gap-2 text-[var(--text-tertiary)] hover:text-[var(--text-primary)] transition-colors"
+              className="flex items-center gap-2 shrink-0 text-[var(--text-tertiary)] hover:text-[var(--text-primary)] transition-colors"
             >
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="m15 18-6-6 6-6" />
               </svg>
               <span className="text-sm font-medium">Back</span>
             </Link>
-            <div className="w-px h-5 bg-[var(--border-subtle)]" />
-            <div className="flex items-center gap-2.5">
+            <div className="w-px h-5 bg-[var(--border-subtle)] hidden sm:block" />
+            <div className="flex min-w-0 items-center gap-2.5">
               <div className="flex items-center justify-center w-7 h-7 rounded-lg bg-[var(--brand)] text-[#fff] font-serif italic font-bold shadow-sm">
                 A
               </div>
-              <span className="font-serif font-medium text-[17px] tracking-tight text-[var(--text-primary)]">
+              <span className="truncate font-serif font-medium text-[16px] md:text-[17px] tracking-tight text-[var(--text-primary)]">
                 Article Forge
               </span>
             </div>
           </div>
 
           <div className="flex items-center gap-3">
-            <span className="text-sm font-semibold text-[var(--text-secondary)]">About</span>
+            <span className="hidden sm:inline text-sm font-semibold text-[var(--text-secondary)]">About</span>
             <button
               onClick={toggleTheme}
+              aria-label="Toggle theme"
               title="Toggle theme"
               className="p-1.5 hover:bg-[var(--bg-hover)] rounded-md transition-colors text-[var(--text-tertiary)] hover:text-[var(--text-primary)]"
             >
@@ -165,21 +165,21 @@ export default function AboutPage() {
           </div>
         </header>
 
-        <div className="flex-1 max-w-4xl mx-auto w-full px-6 py-12 pb-20">
-          <div className="mb-14 text-center">
+        <div className="flex-1 max-w-4xl mx-auto w-full px-4 md:px-6 py-8 md:py-12 pb-16 md:pb-20">
+          <div className="mb-12 md:mb-14 text-center">
             <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[var(--brand-subtle)] border border-[var(--brand-border)] text-[var(--brand)] text-xs font-semibold mb-5 uppercase tracking-wider">
               How it works
             </div>
-            <h1 className="text-4xl font-serif font-medium text-[var(--text-primary)] mb-4 leading-tight">
+            <h1 className="text-3xl md:text-4xl font-serif font-medium text-[var(--text-primary)] mb-4 leading-tight">
               Article Forge — AI Writing Engine
             </h1>
-            <p className="text-[var(--text-secondary)] text-lg leading-relaxed max-w-2xl mx-auto">
+            <p className="text-[var(--text-secondary)] text-base md:text-lg leading-relaxed max-w-2xl mx-auto">
               A secure, rate-limited article generator that connects a chat-style interface to an n8n-orchestrated AI workflow. No API keys in the browser, no runaway costs.
             </p>
           </div>
 
-          <section className="mb-16">
-            <h2 className="text-2xl font-serif font-medium text-[var(--text-primary)] mb-8 flex items-center gap-3">
+          <section className="mb-12 md:mb-16">
+            <h2 className="text-xl md:text-2xl font-serif font-medium text-[var(--text-primary)] mb-6 md:mb-8 flex items-center gap-3">
               <span className="flex items-center justify-center w-8 h-8 rounded-lg bg-[var(--brand-subtle)] text-[var(--brand)] border border-[var(--brand-border)]">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                   <circle cx="12" cy="12" r="10" /><path d="M12 8v4l3 3" />
@@ -211,8 +211,8 @@ export default function AboutPage() {
             </div>
           </section>
 
-          <section className="mb-16">
-            <h2 className="text-2xl font-serif font-medium text-[var(--text-primary)] mb-8 flex items-center gap-3">
+          <section className="mb-12 md:mb-16">
+            <h2 className="text-xl md:text-2xl font-serif font-medium text-[var(--text-primary)] mb-6 md:mb-8 flex items-center gap-3">
               <span className="flex items-center justify-center w-8 h-8 rounded-lg bg-[var(--brand-subtle)] text-[var(--brand)] border border-[var(--brand-border)]">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                   <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
@@ -237,8 +237,8 @@ export default function AboutPage() {
             </div>
           </section>
 
-          <section className="mb-16">
-            <h2 className="text-2xl font-serif font-medium text-[var(--text-primary)] mb-8 flex items-center gap-3">
+          <section className="mb-12 md:mb-16">
+            <h2 className="text-xl md:text-2xl font-serif font-medium text-[var(--text-primary)] mb-6 md:mb-8 flex items-center gap-3">
               <span className="flex items-center justify-center w-8 h-8 rounded-lg bg-[var(--brand-subtle)] text-[var(--brand)] border border-[var(--brand-border)]">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                   <path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22" />
@@ -259,9 +259,11 @@ export default function AboutPage() {
                     {repoLoading ? (
                       <div className="w-12 h-12 rounded-full bg-[var(--bg-elevated)] border border-[var(--border-subtle)] animate-pulse" />
                     ) : repo ? (
-                      <img
+                      <Image
                         src={repo.owner.avatar_url}
                         alt={repo.owner.login}
+                        width={48}
+                        height={48}
                         className="w-12 h-12 rounded-full border border-[var(--border-subtle)] shadow-sm"
                       />
                     ) : (
@@ -353,7 +355,7 @@ export default function AboutPage() {
           </section>
 
           <section>
-            <h2 className="text-2xl font-serif font-medium text-[var(--text-primary)] mb-8 flex items-center gap-3">
+            <h2 className="text-xl md:text-2xl font-serif font-medium text-[var(--text-primary)] mb-6 md:mb-8 flex items-center gap-3">
               <span className="flex items-center justify-center w-8 h-8 rounded-lg bg-[var(--brand-subtle)] text-[var(--brand)] border border-[var(--brand-border)]">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                   <rect x="2" y="3" width="20" height="14" rx="2" ry="2" /><path d="M8 21h8M12 17v4" />
@@ -364,7 +366,7 @@ export default function AboutPage() {
 
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
               {[
-                { name: "Next.js 15", sub: "App Router · SSR" },
+                { name: "Next.js 16", sub: "App Router · SSR" },
                 { name: "TypeScript", sub: "End-to-end safety" },
                 { name: "n8n", sub: "Workflow automation" },
                 { name: "Tailwind CSS", sub: "Utility-first styles" },
