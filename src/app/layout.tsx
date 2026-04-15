@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Script from "next/script";
 import { Fraunces, JetBrains_Mono, Manrope } from "next/font/google";
 import "./globals.css";
 
@@ -41,7 +42,9 @@ export default function RootLayout({
       data-theme="light"
     >
       <head>
-        <script dangerouslySetInnerHTML={{ __html: themeScript }} />
+        <Script id="theme-init" strategy="beforeInteractive">
+          {themeScript}
+        </Script>
         <meta name="theme-color" media="(prefers-color-scheme: light)" content="#faf9f7" />
         <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#1e1b17" />
         <meta name="color-scheme" content="light dark" />

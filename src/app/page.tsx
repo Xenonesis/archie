@@ -13,6 +13,14 @@ type ChatSession = {
   updatedAt: number;
 };
 
+const INITIAL_CHAT_SESSION: ChatSession = {
+  id: "chat-initial",
+  title: "New Chat",
+  messages: [],
+  lastPrompt: null,
+  updatedAt: 0,
+};
+
 type ResponseFromApi = {
   article?: string;
   commentary?: string;
@@ -72,6 +80,8 @@ function getChatPreview(chat: ChatSession) {
 }
 
 function formatHistoryTime(timestamp: number) {
+  if (timestamp <= 0) return "";
+
   const date = new Date(timestamp);
   const now = new Date();
   const isToday = date.toDateString() === now.toDateString();
@@ -86,8 +96,8 @@ function formatHistoryTime(timestamp: number) {
 export default function Home() {
   const [inputValue, setInputValue] = useState("");
   const [tone, setTone] = useState<string>("Professional");
-  const [chatSessions, setChatSessions] = useState<ChatSession[]>(() => [createChatSession()]);
-  const [activeChatId, setActiveChatId] = useState<string>(() => "");
+  const [chatSessions, setChatSessions] = useState<ChatSession[]>(() => [INITIAL_CHAT_SESSION]);
+  const [activeChatId, setActiveChatId] = useState<string>(() => INITIAL_CHAT_SESSION.id);
   const [loading, setLoading] = useState(false);
   const [thinkingState, setThinkingState] = useState(0);
   const [error, setError] = useState<string | null>(null);
