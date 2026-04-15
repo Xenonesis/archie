@@ -27,6 +27,8 @@ function mapApiError(status: number, payload: ResponseFromApi): string {
       return "The generation service timed out. Please retry in a few seconds.";
     if (payload.code === "UPSTREAM_INVALID_JSON")
       return "Received malformed data from generator. Check workflow response format.";
+    if (payload.code === "UPSTREAM_EMPTY_RESPONSE")
+      return "n8n workflow ran but returned empty output. In n8n, add/configure a Respond to Webhook node and return JSON like { article: \"...\" }.";
     return "Generator service is unavailable or returned an error.";
   }
   if (status >= 500) return "Server error while generating article. Please try again.";
