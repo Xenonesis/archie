@@ -434,7 +434,7 @@ export default function Home() {
   };
 
   return (
-    <div className="flex min-h-dvh w-full bg-[var(--bg-base)] text-[var(--text-primary)] overflow-hidden font-sans transition-colors duration-200">
+    <div className="flex h-dvh w-full bg-[var(--bg-base)] text-[var(--text-primary)] overflow-hidden font-sans transition-colors duration-200">
       <aside
         className={`fixed inset-y-0 left-0 z-50 w-[280px] transform border-r border-[var(--border-subtle)] bg-[var(--bg-elevated)] shadow-[var(--shadow-sm)] transition-all duration-300 ease-in-out ${
           sidebarOpen ? "translate-x-0 md:w-[280px]" : "-translate-x-full md:translate-x-0 md:w-0"
@@ -617,7 +617,7 @@ export default function Home() {
         </div>
       </aside>
 
-      <main className="flex-1 flex min-h-dvh flex-col relative overflow-hidden bg-[var(--bg-base)]">
+      <main className="flex-1 flex h-dvh flex-col relative overflow-hidden bg-[var(--bg-base)]">
         {sidebarOpen && (
           <div
             className="absolute inset-0 z-40 bg-black/40 md:hidden transition-opacity"
@@ -625,7 +625,7 @@ export default function Home() {
           />
         )}
 
-        <header className="flex items-center gap-3 px-4 py-3 shrink-0 select-none border-b border-transparent">
+        <header className="sticky top-0 z-30 flex items-center gap-3 px-4 py-3 shrink-0 select-none border-b border-transparent bg-[var(--bg-base)]">
           <button
             onClick={() => setSidebarOpen(!sidebarOpen)}
             aria-label={sidebarOpen ? "Close sidebar" : "Open sidebar"}
