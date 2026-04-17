@@ -3,7 +3,7 @@
 import { FormEvent, useMemo, useRef, useEffect, useState } from "react";
 import Link from "next/link";
 
-type ChatMessage = { role: "user" | "assistant" | "system"; text: string; commentary?: string };
+type ChatMessage = { role: "user" | "assistant" | "system"; text: string; commentary?: string; durationMs?: number; wordCount?: number; thinking?: string; };
 type PromptPayload = { prompt: string; topic: string; tone: string };
 type ChatSession = {
   id: string;
@@ -24,6 +24,7 @@ const INITIAL_CHAT_SESSION: ChatSession = {
 type ResponseFromApi = {
   article?: string;
   commentary?: string;
+  thinking?: string;
   rateLimit?: { remaining: number; reset: number };
   error?: string;
   code?: string;
@@ -272,6 +273,7 @@ export default function Home() {
   };
 
   const callApi = async (promptPayload: PromptPayload, targetChatId: string) => {
+    const startTime = Date.now();
     setLoading(true);
     setError(null);
     try {
@@ -301,7 +303,9 @@ export default function Home() {
         return;
       }
 
-      appendMessageToChat(targetChatId, { role: "assistant", text: data.article as string, commentary: data.commentary });
+      const durationMs = Date.now() - startTime;
+      const wordCount = (data.article as string).trim().split(/\s+/).filter(Boolean).length;
+      appendMessageToChat(targetChatId, { role: "assistant", text: data.article as string, commentary: data.commentary, thinking: data.thinking, durationMs, wordCount });
 
       if (data.rateLimit?.remaining !== undefined && data.rateLimit.remaining <= 1) {
         appendMessageToChat(targetChatId, { role: "system", text: "Approaching rate limit. Slow down to avoid throttling." });
@@ -436,9 +440,8 @@ export default function Home() {
   return (
     <div className="flex h-dvh w-full bg-[var(--bg-base)] text-[var(--text-primary)] overflow-hidden font-sans transition-colors duration-200">
       <aside
-        className={`fixed inset-y-0 left-0 z-50 w-[280px] transform border-r border-[var(--border-subtle)] bg-[var(--bg-elevated)] shadow-[var(--shadow-sm)] transition-all duration-300 ease-in-out ${
-          sidebarOpen ? "translate-x-0 md:w-[280px]" : "-translate-x-full md:translate-x-0 md:w-0"
-        } md:static md:inset-auto md:overflow-hidden shrink-0`}
+        className={`fixed inset-y-0 left-0 z-50 w-[280px] transform border-r border-[var(--border-subtle)] bg-[var(--bg-elevated)] shadow-[var(--shadow-sm)] transition-all duration-300 ease-in-out ${sidebarOpen ? "translate-x-0 md:w-[280px]" : "-translate-x-full md:translate-x-0 md:w-0"
+          } md:static md:inset-auto md:overflow-hidden shrink-0`}
       >
         <div className="flex h-full flex-col bg-[var(--bg-elevated)] w-[280px] shrink-0">
           <div className="px-5 py-4 flex items-center justify-between border-b border-[var(--border-subtle)] shrink-0">
@@ -512,11 +515,10 @@ export default function Home() {
                         setOpenHistoryMenuId(null);
                         closeSidebarIfMobile();
                       }}
-                      className={`w-full flex items-start gap-3 px-3 py-2.5 pr-10 rounded-xl text-left transition-colors group border ${
-                        isActive
-                          ? "bg-[var(--bg-surface)] border-[var(--brand-border)] text-[var(--text-primary)] shadow-sm"
-                          : "border-transparent text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
-                      }`}
+                      className={`w-full flex items-start gap-3 px-3 py-2.5 pr-10 rounded-xl text-left transition-colors group border ${isActive
+                        ? "bg-[var(--bg-surface)] border-[var(--brand-border)] text-[var(--text-primary)] shadow-sm"
+                        : "border-transparent text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
+                        }`}
                     >
                       <svg
                         width="16"
@@ -548,11 +550,10 @@ export default function Home() {
                           setOpenHistoryMenuId(openHistoryMenuId === chat.id ? null : chat.id);
                         }}
                         aria-label={`More actions for ${chat.title}`}
-                        className={`p-1 rounded-md transition-colors ${
-                          openHistoryMenuId === chat.id
-                            ? "bg-[var(--bg-surface)] text-[var(--text-primary)]"
-                            : "text-[var(--text-placeholder)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)]"
-                        }`}
+                        className={`p-1 rounded-md transition-colors ${openHistoryMenuId === chat.id
+                          ? "bg-[var(--bg-surface)] text-[var(--text-primary)]"
+                          : "text-[var(--text-placeholder)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)]"
+                          }`}
                       >
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="1.5" /><circle cx="19" cy="12" r="1.5" /><circle cx="5" cy="12" r="1.5" /></svg>
                       </button>
@@ -683,13 +684,13 @@ export default function Home() {
                   )}
 
                   <div className={`flex flex-col flex-1 ${isUser ? "max-w-[92%] md:max-w-[82%] bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-[var(--text-primary)] px-4 py-3 rounded-2xl shadow-sm" : "w-full"}`}>
-                    
+
                     {isSystem ? (
                       <div className="prose prose-sm md:prose-base leading-relaxed break-words whitespace-pre-wrap max-w-none text-[var(--error-text)]">
                         {msg.text}
                       </div>
                     ) : isUser ? (
-                       <div className="prose prose-sm md:prose-base leading-relaxed break-words whitespace-pre-wrap max-w-none text-[var(--text-primary)]">
+                      <div className="prose prose-sm md:prose-base leading-relaxed break-words whitespace-pre-wrap max-w-none text-[var(--text-primary)]">
                         {msg.text}
                       </div>
                     ) : (
@@ -699,53 +700,64 @@ export default function Home() {
                             {msg.commentary}
                           </div>
                         )}
+                        {msg.thinking && (
+                          <details className="mt-1 mb-2 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-elevated)] overflow-hidden w-fit shadow-sm max-w-full group/think transition-all duration-300">
+                            <summary className="cursor-pointer list-none flex items-center gap-2 px-4 py-2.5 text-[13px] font-semibold text-[var(--brand)] select-none hover:bg-[var(--brand-subtle)] transition-colors opacity-90">
+                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="group-open/think:rotate-90 transition-transform"><path d="m9 18 6-6-6-6" /></svg>
+                              Thought Process
+                            </summary>
+                            <div className="px-4 py-3 text-[13.5px] text-[var(--text-secondary)] border-t border-[var(--border-subtle)] bg-[var(--bg-surface)] whitespace-pre-wrap break-words italic border-l-2 border-l-[var(--brand)] ml-2 leading-relaxed font-serif">
+                              {msg.thinking}
+                            </div>
+                          </details>
+                        )}
                         <div className="rounded-xl overflow-hidden bg-[var(--bg-surface)] border border-[var(--border-subtle)] shadow-xl w-full flex flex-col font-sans transition-all duration-200">
                           <div className="flex items-center justify-between px-4 py-2.5 border-b border-[var(--border-subtle)] bg-[var(--bg-elevated)] shrink-0 select-none">
-                          <div className="flex items-center gap-4">
-                            <div className="flex items-center gap-1.5">
-                              <div className="w-3 h-3 rounded-full bg-[#ff5f56] border border-[#e0443e] shadow-sm"></div>
-                              <div className="w-3 h-3 rounded-full bg-[#ffbd2e] border border-[#dea123] shadow-sm"></div>
-                              <div className="w-3 h-3 rounded-full bg-[#27c93f] border border-[#1aab29] shadow-sm"></div>
+                            <div className="flex items-center gap-4">
+                              <div className="flex items-center gap-1.5">
+                                <div className="w-3 h-3 rounded-full bg-[#ff5f56] border border-[#e0443e] shadow-sm"></div>
+                                <div className="w-3 h-3 rounded-full bg-[#ffbd2e] border border-[#dea123] shadow-sm"></div>
+                                <div className="w-3 h-3 rounded-full bg-[#27c93f] border border-[#1aab29] shadow-sm"></div>
+                              </div>
+                              <div className="flex items-center gap-2 opacity-90">
+                                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--brand)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="16 18 22 12 16 6" /><polyline points="8 6 2 12 8 18" /></svg>
+                                <span className="text-[12px] font-bold text-[var(--text-secondary)] tracking-wider uppercase font-mono">Article_Document.md</span>
+                              </div>
                             </div>
-                            <div className="flex items-center gap-2 opacity-90">
-                              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--brand)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="16 18 22 12 16 6" /><polyline points="8 6 2 12 8 18" /></svg>
-                              <span className="text-[12px] font-bold text-[var(--text-secondary)] tracking-wider uppercase font-mono">Article_Document.md</span>
-                            </div>
-                          </div>
-                          
-                          <div className="flex items-center gap-1">
-                            <button
-                              title="Copy Article"
-                              onClick={() => handleCopy(msg.text, idx)}
-                              className="text-[var(--text-tertiary)] hover:text-[var(--brand)] transition-colors flex items-center justify-center p-1.5 rounded-lg hover:bg-[var(--bg-hover)]"
-                            >
-                              {copiedIdx === idx ? (
-                                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12" /></svg>
-                              ) : (
-                                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2" /><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2" /></svg>
-                              )}
-                            </button>
-                            <div className="w-[1px] h-4 bg-[var(--border-default)] mx-1" />
-                            <button className="text-[var(--text-tertiary)] hover:text-[var(--text-primary)] transition-colors flex items-center justify-center p-1.5 rounded-lg hover:bg-[var(--bg-hover)]" title="Edit Formatting">
-                              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
-                            </button>
-                            <button className="text-[var(--text-tertiary)] hover:text-[var(--text-primary)] transition-colors flex items-center justify-center p-1.5 rounded-lg hover:bg-[var(--bg-hover)]" title="Preview Article">
-                              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>
-                            </button>
-                          </div>
-                        </div>
 
-                        <div className="p-5 overflow-auto text-[14.5px] leading-relaxed bg-[var(--bg-surface)]">
-                           <div className="prose prose-sm md:prose-base max-w-none text-[var(--text-primary)] break-words whitespace-pre-wrap font-mono">
-                             {msg.text}
-                           </div>
+                            <div className="flex items-center gap-1">
+                              <button
+                                title="Copy Article"
+                                onClick={() => handleCopy(msg.text, idx)}
+                                className="text-[var(--text-tertiary)] hover:text-[var(--brand)] transition-colors flex items-center justify-center p-1.5 rounded-lg hover:bg-[var(--bg-hover)]"
+                              >
+                                {copiedIdx === idx ? (
+                                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12" /></svg>
+                                ) : (
+                                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2" /><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2" /></svg>
+                                )}
+                              </button>
+                              <div className="w-[1px] h-4 bg-[var(--border-default)] mx-1" />
+                              <button className="text-[var(--text-tertiary)] hover:text-[var(--text-primary)] transition-colors flex items-center justify-center p-1.5 rounded-lg hover:bg-[var(--bg-hover)]" title="Edit Formatting">
+                                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9" /><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" /></svg>
+                              </button>
+                              <button className="text-[var(--text-tertiary)] hover:text-[var(--text-primary)] transition-colors flex items-center justify-center p-1.5 rounded-lg hover:bg-[var(--bg-hover)]" title="Preview Article">
+                                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="5 3 19 12 5 21 5 3" /></svg>
+                              </button>
+                            </div>
+                          </div>
+
+                          <div className="p-5 overflow-auto text-[14.5px] leading-relaxed bg-[var(--bg-surface)]">
+                            <div className="prose prose-sm md:prose-base max-w-none text-[var(--text-primary)] break-words whitespace-pre-wrap font-mono">
+                              {msg.text}
+                            </div>
+                          </div>
                         </div>
-                      </div>
                       </div>
                     )}
 
                     {!isUser && !isSystem && (
-                      <div className="flex mt-2 gap-1.5 items-center text-[var(--text-tertiary)]">
+                      <div className="flex w-full mt-2 gap-1.5 items-center text-[var(--text-tertiary)]">
                         <button
                           id={`copy-btn-${idx}`}
                           title={copiedIdx === idx ? "Copied!" : "Copy"}
@@ -786,9 +798,9 @@ export default function Home() {
                           aria-label="Share article"
                           onClick={() => {
                             if (navigator.share) {
-                              navigator.share({ text: msg.text }).catch(() => {});
+                              navigator.share({ text: msg.text }).catch(() => { });
                             } else {
-                              navigator.clipboard?.writeText(msg.text).catch(() => {});
+                              navigator.clipboard?.writeText(msg.text).catch(() => { });
                             }
                           }}
                           className="flex items-center justify-center p-1.5 rounded-md hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] transition-colors"
@@ -830,6 +842,18 @@ export default function Home() {
                             </div>
                           )}
                         </div>
+                        {msg.wordCount && (
+                          <div className="ml-auto flex items-center gap-3.5 px-2 text-[12px] font-medium text-[var(--text-tertiary)] select-none">
+                            <div className="flex items-center gap-1.5" title={`Generated in ${msg.durationMs ? (msg.durationMs / 1000).toFixed(1) : "?"}s`}>
+                              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" /></svg>
+                              <span>{msg.durationMs ? (msg.durationMs / 1000).toFixed(1) : "?"}s</span>
+                            </div>
+                            <div className="flex items-center gap-1.5" title={`${msg.wordCount} words`}>
+                              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="21" y1="6" x2="3" y2="6" /><line x1="15" y1="12" x2="3" y2="12" /><line x1="17" y1="18" x2="3" y2="18" /></svg>
+                              <span>{msg.wordCount} words</span>
+                            </div>
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>

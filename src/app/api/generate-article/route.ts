@@ -273,32 +273,51 @@ export async function POST(request: Request) {
         return errorResponse(502, 'UPSTREAM_INVALID_JSON', 'n8n webhook returned invalid JSON.');
       }
 
-      const article = extractArticleText(data);
+      let article = extractArticleText(data);
       let commentary = undefined;
-      // Also extract commentary if the data has it.
-      if (data && typeof data === 'object' && 'commentary' in data) {
-        commentary = String((data as Record<string, unknown>).commentary);
+      let thinking = undefined;
+
+      if (article) {
+        const thinkMatch = article.match(/<think>([\s\S]*?)<\/think>/i);
+        if (thinkMatch) {
+          thinking = thinkMatch[1].trim();
+          article = article.replace(/<think>[\s\S]*?<\/think>/i, '').trim();
+        }
+      }
+
+      if (data && typeof data === 'object') {
+        const record = data as Record<string, unknown>;
+        if ('commentary' in record) commentary = String(record.commentary);
+        if ('thinking' in record) thinking = String(record.thinking);
       }
 
       if (!article) {
         return errorResponse(502, 'UPSTREAM_ERROR', 'n8n response did not include article text.');
       }
 
-      return NextResponse.json({ article, commentary, rateLimit: { remaining: limit.remaining, reset: limit.reset } });
+      return NextResponse.json({ article, commentary, thinking, rateLimit: { remaining: limit.remaining, reset: limit.reset } });
     }
 
-    const article = normalizeArticleText(String(text));
+    let article = normalizeArticleText(String(text));
+    let thinking = undefined;
+    const thinkMatch = article.match(/<think>([\s\S]*?)<\/think>/i);
+    if (thinkMatch) {
+      thinking = thinkMatch[1].trim();
+      article = article.replace(/<think>[\s\S]*?<\/think>/i, '').trim();
+    }
+
     if (!article) {
       return errorResponse(
         502,
         'UPSTREAM_EMPTY_RESPONSE',
-        'n8n webhook returned an empty response body. Configure your n8n workflow to return article text from a Respond to Webhook node.',
+        'n8n webhook returned an empty response body.',
         { upstreamStatus: response.status }
       );
     }
 
     return NextResponse.json({
       article,
+      thinking,
       rateLimit: { remaining: limit.remaining, reset: limit.reset },
     });
   } catch (error) {
