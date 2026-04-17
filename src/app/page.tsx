@@ -110,6 +110,7 @@ export default function Home() {
   const [openMenuIdx, setOpenMenuIdx] = useState<number | null>(null);
   const [historySearch, setHistorySearch] = useState("");
   const [openHistoryMenuId, setOpenHistoryMenuId] = useState<string | null>(null);
+  const [isToneMenuOpen, setIsToneMenuOpen] = useState(false);
 
   const charCount = useMemo(() => inputValue.length, [inputValue]);
   const outputRef = useRef<HTMLDivElement>(null);
@@ -212,12 +213,17 @@ export default function Home() {
       if (openHistoryMenuId !== null && !target?.closest(`[data-history-menu-id=\"${openHistoryMenuId}\"]`)) {
         setOpenHistoryMenuId(null);
       }
+
+      if (!target?.closest("[data-tone-menu]")) {
+        setIsToneMenuOpen(false);
+      }
     };
 
     const closeOnEscape = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         setOpenMenuIdx(null);
         setOpenHistoryMenuId(null);
+        setIsToneMenuOpen(false);
         if (window.matchMedia("(max-width: 767px)").matches) {
           setSidebarOpen(false);
         }
@@ -896,7 +902,7 @@ export default function Home() {
               </div>
             )}
 
-            <div className="w-full relative shadow-[var(--shadow-md)] bg-[var(--bg-surface)] border border-[var(--border-default)] rounded-2xl focus-within:border-[var(--brand)] focus-within:ring-2 focus-within:ring-[rgba(201,100,66,0.12)] transition-all overflow-hidden flex flex-col">
+            <div className="w-full relative shadow-[var(--shadow-md)] bg-[var(--bg-surface)] border border-[var(--border-default)] rounded-2xl focus-within:border-[var(--brand)] focus-within:ring-2 focus-within:ring-[rgba(201,100,66,0.12)] transition-all flex flex-col">
               <textarea
                 ref={textareaRef}
                 value={inputValue}
@@ -909,15 +915,32 @@ export default function Home() {
 
               <div className="flex items-center justify-between px-3 pb-3">
                 <div className="flex items-center gap-2">
-                  <div className="relative group">
-                    <select
-                      value={tone}
-                      onChange={(e) => setTone(e.target.value)}
-                      className="appearance-none cursor-pointer bg-[var(--bg-elevated)] hover:bg-[var(--bg-hover)] transition-colors text-[var(--text-secondary)] text-xs font-semibold px-3 py-1.5 pr-7 rounded-lg border border-[var(--border-subtle)] outline-none"
+                  <div className="relative group" data-tone-menu>
+                    <button
+                      type="button"
+                      onClick={() => setIsToneMenuOpen(!isToneMenuOpen)}
+                      className="flex items-center gap-2 cursor-pointer bg-[var(--bg-elevated)] hover:bg-[var(--bg-hover)] transition-colors text-[var(--text-secondary)] text-xs font-semibold px-3 py-1.5 rounded-lg border border-[var(--border-subtle)] outline-none"
                     >
-                      {TONES.map((t) => <option key={t} value={t}>{t}</option>)}
-                    </select>
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none text-[var(--text-tertiary)]"><path d="m6 9 6 6 6-6" /></svg>
+                      {tone}
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={`text-[var(--text-tertiary)] transition-transform ${isToneMenuOpen ? 'rotate-180' : ''}`}><path d="m6 9 6 6 6-6" /></svg>
+                    </button>
+                    {isToneMenuOpen && (
+                      <div className="absolute left-0 bottom-full mb-1 min-w-full py-1 bg-[var(--bg-elevated)] border border-[var(--border-subtle)] rounded-lg shadow-[var(--shadow-md)] z-50 flex flex-col animate-in fade-in slide-in-from-bottom-2 duration-150 overflow-hidden">
+                        {TONES.map((t) => (
+                          <button
+                            key={t}
+                            type="button"
+                            onClick={() => {
+                              setTone(t);
+                              setIsToneMenuOpen(false);
+                            }}
+                            className={`px-3 py-2 text-xs text-left w-full transition-colors whitespace-nowrap ${tone === t ? 'bg-[var(--bg-base)] text-[var(--brand)] font-bold' : 'text-[var(--text-primary)] hover:bg-[var(--bg-hover)] font-medium'}`}
+                          >
+                            {t}
+                          </button>
+                        ))}
+                      </div>
+                    )}
                   </div>
                   {charCount > 400 && (
                     <span className={`text-xs ml-2 ${charCount > 500 ? "text-[var(--error-text)] font-semibold" : "text-[var(--text-placeholder)]"}`}>
